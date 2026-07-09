@@ -1,0 +1,14 @@
+{
+  "id": "latticenet.wireguard",
+  "name": "wireguard (VPN networks)",
+  "type": "system",
+  "capabilities": [
+    "node:read",
+    "network:plan",
+    "network:apply",
+    "task:run"
+  ],
+  "version": "0.1.0-alpha.1",
+  "entrypoint": "system-go/lattice-plugin-wireguard",
+  "publisher": "latticenet"
+}
