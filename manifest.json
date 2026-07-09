@@ -11,6 +11,8 @@
   "version": "0.1.0-alpha.2",
   "entrypoint": "system-go/lattice-plugin-wireguard",
   "publisher": "latticenet",
+  "digest_sha256": "c54b1af7358d0ca95c078ac56cbff522fb3682d99b5944046d109705546eaf2d",
+  "signature_ed25519": "Ec/k9LQNHWrLuGnnPVWMNIE0tfIzpgvQ7rxRiqFunhFKcFT32xfGtJ9WfGFUROoUWb4l71NiBBzY/cx+KoY8AQ==",
   "ui": {
     "nav": [
       {
