@@ -8,7 +8,29 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "entrypoint": "system-go/lattice-plugin-wireguard",
-  "publisher": "latticenet"
+  "publisher": "latticenet",
+  "ui": {
+    "nav": [
+      {
+        "section": "network-security",
+        "section_title": "Network Security",
+        "title": "Networks",
+        "route": "networks",
+        "icon": "Spline",
+        "scopes": [
+          "network:plan"
+        ]
+      }
+    ],
+    "views": [
+      {
+        "route": "networks",
+        "title": "WireGuard Networks",
+        "kind": "builtin",
+        "component_key": "wireguard.networks"
+      }
+    ]
+  }
 }

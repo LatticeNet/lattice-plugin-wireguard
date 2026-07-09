@@ -55,6 +55,22 @@ It also declares **no `interfaces` yet**, deliberately: the networks read model
 (store + API) is a later slice, and a manifest must never declare a service the
 server cannot resolve.
 
+## Dashboard navigation
+
+The signed manifest contributes a dashboard-owned builtin view under its own
+plugin domain:
+
+```
+Network Security
+└─ wireguard (VPN networks)
+   └─ Networks
+```
+
+That is intentionally separate from the base `Networking` section and from the
+generic `Platform → Plugins` registry. The plugin contributes only navigation
+metadata and a fixed `component_key`; the dashboard renders the first-party
+WireGuard view and keeps all data access on the core REST API.
+
 ## Building
 
 ```sh

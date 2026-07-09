@@ -25,7 +25,7 @@ import (
 const (
 	pluginID      = "latticenet.wireguard"
 	pluginName    = "wireguard (VPN networks)"
-	pluginVersion = "0.1.0-alpha.1"
+	pluginVersion = "0.1.0-alpha.2"
 )
 
 var capabilities = []string{"node:read", "network:plan", "network:apply", "task:run"}
