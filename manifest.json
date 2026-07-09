@@ -1,6 +1,6 @@
 {
   "id": "latticenet.wireguard",
-  "name": "wireguard (VPN networks)",
+  "name": "WireGuard (VPN networks)",
   "type": "system",
   "capabilities": [
     "node:read",
@@ -8,17 +8,17 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "entrypoint": "system-go/lattice-plugin-wireguard",
   "publisher": "latticenet",
-  "digest_sha256": "c54b1af7358d0ca95c078ac56cbff522fb3682d99b5944046d109705546eaf2d",
-  "signature_ed25519": "Ec/k9LQNHWrLuGnnPVWMNIE0tfIzpgvQ7rxRiqFunhFKcFT32xfGtJ9WfGFUROoUWb4l71NiBBzY/cx+KoY8AQ==",
+  "digest_sha256": "1589f327e293e2260f2e8785b4c660498f8d1ac4448f7dfbacaac1d3a72c0a81",
+  "signature_ed25519": "Qv12+mAvRjT2BsiwNVNoIrvwcycCJndXGBTc3ceWAFnkxK+QYqAEhHho5XcDwPI07WDohSkzlHM15bSFph4TAg==",
   "ui": {
     "nav": [
       {
         "section": "network-security",
-        "section_title": "Network Security",
-        "title": "Networks",
+        "section_title": "Network Plugins",
+        "title": "WireGuard",
         "route": "networks",
         "icon": "Spline",
         "scopes": [

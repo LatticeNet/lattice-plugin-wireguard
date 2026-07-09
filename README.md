@@ -3,11 +3,10 @@
 Official LatticeNet **wireguard** system plugin: WireGuard networks,
 topologies, and device peers for a Lattice fleet.
 
-> Status: **alpha, unsigned.** The manifest carries no `digest_sha256` or
-> `signature_ed25519` yet — see [Releasing](#releasing). A host-risk plugin
-> without a trusted-publisher signature is refused by the loader unless the
-> operator sets `allow_unsigned_host_risk` (dev only). That is the intended
-> fail-closed behavior; do not work around it.
+> Status: **alpha, signed at release.** A host-risk plugin without a
+> trusted-publisher signature is refused by the loader unless the operator sets
+> `allow_unsigned_host_risk` (dev only). That is the intended fail-closed
+> behavior; do not work around it.
 
 Designed in [`lattice/docs/designs/design-13`](https://github.com/LatticeNet/lattice/blob/main/docs/designs/design-13-wireguard-and-netguard-plugins.md).
 
