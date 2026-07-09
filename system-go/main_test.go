@@ -98,13 +98,40 @@ func TestHealthAndPlan(t *testing.T) {
 	}
 }
 
-// A private key must never be echoed by this subprocess, whatever it is handed.
-func TestPlanNeverEchoesKeyMaterial(t *testing.T) {
+func TestDescribeNeverEchoesKeyMaterial(t *testing.T) {
 	resp := handle(request{Action: "describe"})
 	for _, forbidden := range []string{"PrivateKey", "BEGIN OPENSSH", "wg genkey"} {
 		if strings.Contains(string(resp.Result), forbidden) {
 			t.Fatalf("describe leaked %q", forbidden)
 		}
+	}
+}
+
+// A private key must never be echoed by this subprocess, whatever it is handed.
+func TestPlanNeverEchoesKeyMaterial(t *testing.T) {
+	resp := handle(request{Action: "plan", Payload: map[string]any{
+		"network":        "default",
+		"private_key":    "super-secret-private-key",
+		"preshared_key":  "super-secret-preshared-key",
+		"api_token":      "super-secret-token",
+		"unknown_field":  "operator-private-note",
+		"interface_name": "wg0",
+	}})
+	if !resp.OK {
+		t.Fatalf("plan ok = false: %q", resp.Error)
+	}
+	for _, forbidden := range []string{"super-secret-private-key", "super-secret-preshared-key", "super-secret-token", "operator-private-note"} {
+		if strings.Contains(resp.Plan, forbidden) {
+			t.Fatalf("plan leaked %q:\n%s", forbidden, resp.Plan)
+		}
+	}
+	for _, want := range []string{"# private_key = [REDACTED]", "# preshared_key = [REDACTED]", "# api_token = [REDACTED]", "# interface_name = wg0"} {
+		if !strings.Contains(resp.Plan, want) {
+			t.Fatalf("plan missing %q:\n%s", want, resp.Plan)
+		}
+	}
+	if strings.Contains(resp.Plan, "unknown_field") {
+		t.Fatalf("plan must omit unknown payload fields:\n%s", resp.Plan)
 	}
 }
 

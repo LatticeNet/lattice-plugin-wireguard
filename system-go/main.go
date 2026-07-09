@@ -30,6 +30,21 @@ const (
 
 var capabilities = []string{"node:read", "network:plan", "network:apply", "task:run"}
 
+var safePlanFields = map[string]struct{}{
+	"address":           {},
+	"dns":               {},
+	"endpoint":          {},
+	"extra_allowed_ips": {},
+	"interface_name":    {},
+	"keepalive":         {},
+	"listen_port":       {},
+	"mtu":               {},
+	"network":           {},
+	"node_id":           {},
+	"role":              {},
+	"topology":          {},
+}
+
 type request struct {
 	Action  string         `json:"action"`
 	Payload map[string]any `json:"payload"`
@@ -102,12 +117,32 @@ func renderPlan(payload map[string]any) string {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		lines = append(lines, fmt.Sprintf("# %s = %v", k, payload[k]))
+		switch {
+		case isSensitivePlanField(k):
+			lines = append(lines, fmt.Sprintf("# %s = [REDACTED]", k))
+		case isSafePlanField(k):
+			lines = append(lines, fmt.Sprintf("# %s = %v", k, payload[k]))
+		}
 	}
 	lines = append(lines,
 		"# the authoritative wg0.conf is rendered in core (internal/wireguard) with the",
 		"# private key left as a placeholder, then applied via plan->approve->apply.")
 	return strings.Join(lines, "\n")
+}
+
+func isSafePlanField(key string) bool {
+	_, ok := safePlanFields[strings.ToLower(key)]
+	return ok
+}
+
+func isSensitivePlanField(key string) bool {
+	lower := strings.ToLower(key)
+	for _, marker := range []string{"key", "secret", "token", "password", "passphrase", "credential"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func write(resp response) { _ = json.NewEncoder(os.Stdout).Encode(resp) }
