@@ -8,11 +8,11 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "entrypoint": "system-go/lattice-plugin-wireguard",
   "publisher": "latticenet",
-  "digest_sha256": "1589f327e293e2260f2e8785b4c660498f8d1ac4448f7dfbacaac1d3a72c0a81",
-  "signature_ed25519": "Qv12+mAvRjT2BsiwNVNoIrvwcycCJndXGBTc3ceWAFnkxK+QYqAEhHho5XcDwPI07WDohSkzlHM15bSFph4TAg==",
+  "digest_sha256": "95feac2dbb41b3030a27d1245f64380e1c732f92b43ca026e9b695a53b751d6e",
+  "signature_ed25519": "sCIA79SRVWQhrqw16olmEsfRmwcGJ8to65LPouDm80OtO/EXVMShFz+c6JUlL00REaalSD0+EpjKBYk/7bO6Bg==",
   "ui": {
     "nav": [
       {
