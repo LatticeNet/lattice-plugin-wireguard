@@ -1,115 +1,54 @@
 # lattice-plugin-wireguard
 
-Official LatticeNet **wireguard** system plugin: WireGuard networks,
-topologies, and device peers for a Lattice fleet.
+Official LatticeNet WireGuard mesh plugin. This repository owns the signed
+Bundle v2 manifest, Linux runtime, sandbox UI, deterministic packer, and tests.
+Current prerelease: `v0.1.0-alpha.6`.
 
-> Status: **alpha, signed at release.** A host-risk plugin without a
-> trusted-publisher signature is refused by the loader unless the operator sets
-> `allow_unsigned_host_risk` (dev only). That is the intended fail-closed
-> behavior; do not work around it.
+## Current operator surface
 
-Designed in [`lattice/docs/designs/design-13`](https://github.com/LatticeNet/lattice/blob/main/docs/designs/design-13-wireguard-and-netguard-plugins.md).
+The plugin contributes one Extensions page with:
 
-## What it manages
+- fleet WireGuard address, public-key, endpoint, online and readiness state;
+- a secret-free full-mesh topology preview;
+- exact per-peer `/32` or `/128` `AllowedIPs` host-route previews;
+- per-node listen-port selection;
+- authoritative `wg0.conf` plan creation and pending-approval review.
 
-- **Networks** — named WireGuard networks with a CIDR, a topology
-  (`mesh`, `hub-and-spoke`, or `custom`), and defaults for listen port,
-  keepalive, MTU, and DNS. A fleet may run several; a node may belong to more
-  than one.
-- **Memberships** — a node's role (`hub` / `spoke` / `peer`), its allocated
-  address, per-member overrides, and — for hubs only — advertised routes such
-  as a LAN CIDR or a full-tunnel exit route.
-- **External device peers** — laptops and phones. The device config is
-  rendered **once** with its private key and never persisted; only the public
-  key and metadata survive.
-- **Adoption** — existing on-box configs are discovered read-only
-  (`wg show all dump` plus a redacting conf parser) and become managed only
-  when an operator explicitly adopts them.
+The UI is built and released here. Deactivation removes the navigation and
+iframe; the base Dashboard has no WireGuard page implementation.
 
-## Safety invariants
+## Key and apply boundary
 
-These are enforced in core and are not negotiable by this plugin:
+Private keys never reach the server, plugin subprocess, manifest, browser, or
+plan. Core rendering writes `__LATTICE_WG_PRIVATE_KEY__`; the node agent replaces
+that placeholder from its local key file only during an approved apply.
 
-- A peer's own address is always pinned to a **host route** (`/32`, `/128`).
-  A member reporting `10.66.0.5/16` cannot intercept its peers' traffic.
-- Only a **hub's reviewed** `extra_allowed_ips` widen a peer's `AllowedIPs`.
-  A spoke's self-declared `0.0.0.0/0` is ignored.
-- **Node private keys never reach the server** or this subprocess. The rendered
-  config carries a placeholder the agent substitutes from a local 0600 key file
-  at apply time.
-- Apply is `wg-quick strip` validate → snapshot → dead-man watchdog → commit →
-  control-plane selfcheck → disarm. If the change severs the operator's own
-  path, the detached watchdog restores the previous interface. Peer-only
-  changes take a `wg syncconf` fast path so established tunnels do not flap.
+`latticenet.wireguard/networks` is an in-core service owned by this plugin:
 
-## What it does not do
+- `overview` requires `node:read` and returns only public/operational metadata;
+- `plan` requires `network:plan` and creates a pending WireGuard approval;
+- no iframe method applies configuration directly.
 
-This subprocess **never mutates a host.** It answers `describe`, `health`, and
-`plan` over the system-plugin stdio contract, and nothing else. Topology
-compilation, key handling, the approval flow, the watchdog, and the task
-executor are **core** (ADR-001 D5/D6, design-13 D2). The plugin owns the domain
-model and the dashboard information architecture — not the trust base.
+Apply continues through validation, snapshot, dead-man rollback watchdog,
+`wg syncconf`/`wg-quick`, and control-plane self-check. Global plugin views fail
+closed for access tokens restricted to a node allowlist.
 
-It also declares **no `interfaces` yet**, deliberately: the networks read model
-(store + API) is a later slice, and a manifest must never declare a service the
-server cannot resolve.
+Named networks, device QR issuance, route advertisement, and existing-config
+adoption are intentionally not shown as pretend controls until their server and
+agent contracts ship.
 
-## Dashboard navigation
-
-The signed manifest contributes a dashboard-owned builtin view under its own
-plugin domain:
-
-```
-Network Security
-└─ wireguard (VPN networks)
-   └─ Networks
-```
-
-That is intentionally separate from the base `Networking` section and from the
-generic `Platform → Plugins` registry. The plugin contributes only navigation
-metadata and a fixed `component_key`; the dashboard renders the first-party
-WireGuard view and keeps all data access on the core REST API.
-
-## Building
+## Verification
 
 ```sh
-cd system-go
-go test ./...
-go build -trimpath -ldflags='-s -w' -o lattice-plugin-wireguard .
+go test -race ./system-go/...
+go test -race ./tools/pluginpack/...
+cd ui
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm run verify:build
 ```
 
-Zero dependencies, pure Go, no CGO.
-
-## Releasing
-
-The manifest must be signed by a **trusted publisher** before a host-risk
-plugin will load. The publisher's ed25519 seed is operator-held and is never
-committed:
-
-```sh
-# from a lattice-server checkout
-go run ./cmd/pluginsign \
-  -manifest ../lattice-plugin-wireguard/manifest.json \
-  -artifact ../lattice-plugin-wireguard/system-go/lattice-plugin-wireguard \
-  -seed /path/to/latticenet-seed.bin \
-  -update-digest -write
-```
-
-Alpha releases must be cut as prereleases (`v0.1.0-alpha.N`) and must not
-become GitHub `Latest`.
-
-## Install
-
-Installation is deliberately **not** remote. Drop the verified bundle on disk:
-
-```
-<LATTICE_PLUGIN_DIR>/wireguard/manifest.json
-<LATTICE_PLUGIN_DIR>/wireguard/artifact      # the built binary, fixed filename
-```
-
-The loader re-verifies the digest at start, stages a 0700 copy, and executes
-that copy in a confined working directory with an environment allowlist.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+Build and sign with Go `1.26.4`, Node `22`, the deterministic plugin packer, and
+the trusted LatticeNet Ed25519 publisher seed. Never commit the seed.

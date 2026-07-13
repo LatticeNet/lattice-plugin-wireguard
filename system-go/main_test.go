@@ -60,17 +60,13 @@ func TestDescribeMatchesManifestContract(t *testing.T) {
 	}
 }
 
-// This plugin deliberately declares no interfaces yet: the WireGuard networks
-// read model (store + API) is a later slice, and a manifest must never declare
-// a service the server cannot resolve — the gateway would fall through to this
-// subprocess, which answers "unsupported action".
-func TestManifestDeclaresNoUnresolvableInterfaces(t *testing.T) {
+func TestManifestDeclaresOwnedNetworksInterface(t *testing.T) {
 	manifest := loadManifest(t)
-	if len(manifest.Interfaces) != 0 {
-		t.Fatalf("interfaces must stay empty until the in-core services are registered, got %+v", manifest.Interfaces)
+	if len(manifest.Interfaces) != 1 || manifest.Interfaces[0].Service != manifest.ID+"/networks" {
+		t.Fatalf("expected the core-owned networks interface, got %+v", manifest.Interfaces)
 	}
 	if resp := handle(request{Action: "call"}); resp.OK {
-		t.Fatal("this subprocess must not answer gateway calls")
+		t.Fatal("core-owned network calls must not execute in the subprocess")
 	}
 }
 

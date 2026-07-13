@@ -1,4 +1,5 @@
 {
+  "schema": "lattice.plugin.manifest.v2",
   "id": "latticenet.wireguard",
   "name": "WireGuard (VPN networks)",
   "type": "system",
@@ -8,16 +9,35 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0-alpha.5",
-  "entrypoint": "system-go/lattice-plugin-wireguard",
+  "version": "0.1.0-alpha.6",
   "publisher": "latticenet",
-  "digest_sha256": "7bb5d837613a4e852151fa849ee18bf854d31e02e87b4b2e16d9d655d6f5e064",
-  "signature_ed25519": "jk8RPyUuzM4+JqQJj0UduKfqUUYkwZol+p7THxPdt8DoS/nu3wLignT//j5N9vIkhAPsm5fJhYbGQDhl1fmrBQ==",
+  "signature_ed25519": "RygmT0dtjg+tFCN5XstXFaLJLo2ugnY2Rh4gojtM2fxJydiZyzeGICEtrQJUZrb17VTSuBTX66+3jeEFVShwDg==",
+  "bundle": {
+    "format": "tar+gzip",
+    "digest_sha256": "065912c3c92df93e0ac7d6cce4fd3f2ba2839b4f9b840efc7ecb88173c3ce147"
+  },
+  "runtime": {
+    "protocol": "stdio-json-v1",
+    "entrypoints": {
+      "linux/amd64": "bin/linux-amd64/plugin",
+      "linux/arm64": "bin/linux-arm64/plugin"
+    }
+  },
+  "ui_runtime": {
+    "mode": "sandbox",
+    "entrypoint": "ui/index.html",
+    "bridge_version": "1"
+  },
+  "compatibility": {
+    "server": "\u003e=0.2.1",
+    "dashboard_host": "\u003e=1",
+    "runtime_protocol": "\u003e=1"
+  },
   "ui": {
     "nav": [
       {
-        "section": "network-security",
-        "section_title": "Network Plugins",
+        "section": "extensions",
+        "section_title": "Extensions",
         "title": "WireGuard",
         "route": "networks",
         "icon": "Spline",
@@ -30,9 +50,29 @@
       {
         "route": "networks",
         "title": "WireGuard Networks",
-        "kind": "builtin",
-        "component_key": "wireguard.networks"
+        "kind": "sandbox"
       }
     ]
-  }
+  },
+  "interfaces": [
+    {
+      "service": "latticenet.wireguard/networks",
+      "methods": [
+        {
+          "name": "overview",
+          "effect": "read",
+          "scopes": [
+            "node:read"
+          ]
+        },
+        {
+          "name": "plan",
+          "effect": "plan",
+          "scopes": [
+            "network:plan"
+          ]
+        }
+      ]
+    }
+  ]
 }
