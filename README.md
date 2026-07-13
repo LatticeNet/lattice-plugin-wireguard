@@ -2,7 +2,7 @@
 
 Official LatticeNet WireGuard mesh plugin. This repository owns the signed
 Bundle v2 manifest, Linux runtime, sandbox UI, deterministic packer, and tests.
-Current prerelease: `v0.1.0-alpha.6`.
+Current prerelease: `v0.1.0-alpha.7`.
 
 ## Current operator surface
 

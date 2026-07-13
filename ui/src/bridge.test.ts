@@ -26,7 +26,7 @@ describe("BridgeClient", () => {
     expect(posted.filter((message) => (message as { type?: string }).type === "lattice.plugin.ready")).toHaveLength(2);
     const init = {
       type: "lattice.host.init", nonce: client.nonce, version: "1",
-      pluginId: "latticenet.wireguard", pluginVersion: "0.1.0-alpha.6", pluginRoute: "networks",
+      pluginId: "latticenet.wireguard", pluginVersion: "0.1.0-alpha.7", pluginRoute: "networks",
       locale: "en", colorScheme: "dark", designTokens: {},
       interfaces: [{ service: "latticenet.wireguard/networks", methods: ["overview"] }],
     };
