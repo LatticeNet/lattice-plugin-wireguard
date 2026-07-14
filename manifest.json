@@ -11,7 +11,7 @@
   ],
   "version": "0.1.0-alpha.7",
   "publisher": "latticenet",
-  "signature_ed25519": "c45WB4i5zbS0fJ7ceG0qPiX9BfrKy/f9BIqSGThLpLQ96BkTottPFLEUDQNQAa/9OpvPO+1Yq3qxDDGm3he4Dg==",
+  "signature_ed25519": "rWWp5FBIhyPPAOGtEFhqAxBcEC0LZxrr+rkQ8UpUZMuKi3MmYKOcx5W2d8J2YkWmkwTKE+43am3N5+sd2CkmBg==",
   "bundle": {
     "format": "tar+gzip",
     "digest_sha256": "0c947045617d4c2c0558ba1ac0dcfb8b6474e0d090abcd3b6be3ed768ec68baf"
@@ -72,7 +72,8 @@
             "network:plan"
           ]
         }
-      ]
+      ],
+      "backing": "core"
     }
   ]
 }
