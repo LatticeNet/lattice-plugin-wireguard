@@ -74,7 +74,7 @@ func TestHealthAndPlan(t *testing.T) {
 	if resp := handle(request{Action: "health"}); !resp.OK {
 		t.Fatalf("health ok = false: %q", resp.Error)
 	}
-	resp := handle(request{Action: "plan", Payload: map[string]any{"network": "default", "node_id": "node-a"}})
+	resp := handle(request{Action: "plan", Payload: mustJSON(map[string]any{"network": "default", "node_id": "node-a"})})
 	if !resp.OK {
 		t.Fatalf("plan ok = false: %q", resp.Error)
 	}
@@ -86,9 +86,9 @@ func TestHealthAndPlan(t *testing.T) {
 			t.Fatalf("plan missing %q:\n%s", want, resp.Plan)
 		}
 	}
-	first := handle(request{Action: "plan", Payload: map[string]any{"b": 2, "a": 1, "c": 3}}).Plan
+	first := handle(request{Action: "plan", Payload: mustJSON(map[string]any{"b": 2, "a": 1, "c": 3})}).Plan
 	for i := 0; i < 20; i++ {
-		if got := handle(request{Action: "plan", Payload: map[string]any{"c": 3, "a": 1, "b": 2}}).Plan; got != first {
+		if got := handle(request{Action: "plan", Payload: mustJSON(map[string]any{"c": 3, "a": 1, "b": 2})}).Plan; got != first {
 			t.Fatalf("plan rendering is not deterministic:\n%s\n---\n%s", first, got)
 		}
 	}
@@ -105,14 +105,14 @@ func TestDescribeNeverEchoesKeyMaterial(t *testing.T) {
 
 // A private key must never be echoed by this subprocess, whatever it is handed.
 func TestPlanNeverEchoesKeyMaterial(t *testing.T) {
-	resp := handle(request{Action: "plan", Payload: map[string]any{
+	resp := handle(request{Action: "plan", Payload: mustJSON(map[string]any{
 		"network":        "default",
 		"private_key":    "super-secret-private-key",
 		"preshared_key":  "super-secret-preshared-key",
 		"api_token":      "super-secret-token",
 		"unknown_field":  "operator-private-note",
 		"interface_name": "wg0",
-	}})
+	})})
 	if !resp.OK {
 		t.Fatalf("plan ok = false: %q", resp.Error)
 	}
@@ -129,6 +129,14 @@ func TestPlanNeverEchoesKeyMaterial(t *testing.T) {
 	if strings.Contains(resp.Plan, "unknown_field") {
 		t.Fatalf("plan must omit unknown payload fields:\n%s", resp.Plan)
 	}
+}
+
+func mustJSON(value any) json.RawMessage {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return raw
 }
 
 func TestUnsupportedActionFailsClosed(t *testing.T) {
