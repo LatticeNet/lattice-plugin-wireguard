@@ -15,7 +15,7 @@ import {
   X,
 } from "@lucide/vue";
 
-import { BridgeClient, canCall, type HostInit } from "./bridge";
+import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
 import {
   PRIVATE_KEY_PLACEHOLDER,
   hostRoute,
@@ -38,7 +38,7 @@ const selectedNodeID = ref("");
 
 let bridge: BridgeClient | undefined;
 try {
-  bridge = new BridgeClient(window);
+  bridge = new BridgeClient({ window, expectedPluginId: "latticenet.wireguard", expectedRoutes: ["networks"], idPrefix: "wireguard" });
   bridge.init.then(async (value) => {
     init.value = value;
     await refresh();
