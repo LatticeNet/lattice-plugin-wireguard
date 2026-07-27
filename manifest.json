@@ -57,6 +57,7 @@
   "interfaces": [
     {
       "service": "latticenet.wireguard/networks",
+      "backing": "core",
       "methods": [
         {
           "name": "overview",

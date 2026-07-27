@@ -15,6 +15,7 @@ type manifestContract struct {
 	Capabilities []string `json:"capabilities"`
 	Interfaces   []struct {
 		Service string `json:"service"`
+		Backing string `json:"backing"`
 	} `json:"interfaces"`
 }
 
@@ -64,6 +65,9 @@ func TestManifestDeclaresOwnedNetworksInterface(t *testing.T) {
 	manifest := loadManifest(t)
 	if len(manifest.Interfaces) != 1 || manifest.Interfaces[0].Service != manifest.ID+"/networks" {
 		t.Fatalf("expected the core-owned networks interface, got %+v", manifest.Interfaces)
+	}
+	if manifest.Interfaces[0].Backing != "core" {
+		t.Fatalf("networks backing = %q, want core", manifest.Interfaces[0].Backing)
 	}
 	if resp := handle(request{Action: "call"}); resp.OK {
 		t.Fatal("core-owned network calls must not execute in the subprocess")
