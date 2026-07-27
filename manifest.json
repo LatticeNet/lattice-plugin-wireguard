@@ -9,12 +9,12 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0-alpha.7",
+  "version": "0.1.0-alpha.8",
   "publisher": "latticenet",
-  "signature_ed25519": "c45WB4i5zbS0fJ7ceG0qPiX9BfrKy/f9BIqSGThLpLQ96BkTottPFLEUDQNQAa/9OpvPO+1Yq3qxDDGm3he4Dg==",
+  "signature_ed25519": "wlWsQENxJGw3VZPisXUOeAUs65Htgv2JTmTjSbtgheMxAdl50LYAqhQxtSxORslvadb2t9xLLkLRCbq83LpLAg==",
   "bundle": {
     "format": "tar+gzip",
-    "digest_sha256": "0c947045617d4c2c0558ba1ac0dcfb8b6474e0d090abcd3b6be3ed768ec68baf"
+    "digest_sha256": "34eb6c0765e018ae3ff21331bebfc65957a1f9ec5a4821fd0a718260c9e415d1"
   },
   "runtime": {
     "protocol": "stdio-json-v1",
@@ -57,7 +57,6 @@
   "interfaces": [
     {
       "service": "latticenet.wireguard/networks",
-      "backing": "core",
       "methods": [
         {
           "name": "overview",
@@ -73,7 +72,8 @@
             "network:plan"
           ]
         }
-      ]
+      ],
+      "backing": "core"
     }
   ]
 }
