@@ -45,6 +45,34 @@ describe("wireguardModel", () => {
   });
 });
 
+describe("normalizedPort", () => {
+  // Vue implicitly applies .number to v-model on an <input type="number">, so
+  // this field is a string before the operator touches it and a number after.
+  // Both shapes reach this function in normal use.
+  it("accepts the string the field starts as and the number it becomes", () => {
+    expect(normalizedPort("51820")).toBe(51820);
+    expect(normalizedPort(51820)).toBe(51820);
+    expect(normalizedPort(" 443 ")).toBe(443);
+  });
+
+  it("treats an emptied field as unset rather than invalid", () => {
+    expect(normalizedPort("", 51820)).toBe(51820);
+    expect(normalizedPort("   ", 4242)).toBe(4242);
+    // An emptied <input type="number"> hands over NaN, not "".
+    expect(normalizedPort(Number.NaN, 4242)).toBe(4242);
+    expect(normalizedPort(undefined, 4242)).toBe(4242);
+    expect(normalizedPort(null, 4242)).toBe(4242);
+  });
+
+  it("rejects ports outside the range, from either shape", () => {
+    expect(() => normalizedPort(99999)).toThrow(/1 to 65535/);
+    expect(() => normalizedPort("99999")).toThrow(/1 to 65535/);
+    expect(() => normalizedPort(0)).toThrow(/1 to 65535/);
+    expect(() => normalizedPort(443.5)).toThrow(/whole number/);
+    expect(() => normalizedPort("abc")).toThrow(/1 to 65535/);
+  });
+});
+
 describe("mesh readiness", () => {
   const node = (over: Partial<WireGuardNode>): WireGuardNode => ({
     node_id: over.node_id ?? "n", name: over.name ?? "n", online: false, configuration: "missing", ...over,

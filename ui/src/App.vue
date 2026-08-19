@@ -16,6 +16,7 @@ import {
 } from "@lucide/vue";
 
 import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
+import { useHandshakeTimeout } from "./handshakeTimeout";
 import { MIN_ANCHOR_TOP, anchorTopFrom, clampAnchorTop, isInsideOverlay } from "./overlayAnchor";
 import {
   PRIVATE_KEY_PLACEHOLDER,
@@ -130,25 +131,32 @@ async function refresh(background = false): Promise<void> {
 const planNode = ref<WireGuardNode>();
 const listenPort = ref("");
 const planning = ref(false);
+// Errors raised while a dialog is open belong in that dialog. The page-level
+// alert sits behind the scrim, thousands of pixels up a frame the operator is
+// not looking at, so writing there reads as the button doing nothing.
+const planError = ref("");
 interface Approval { id: string; node_id: string; plugin: string; action: string; plan: string; status: string; created_at?: string }
 const approval = ref<Approval>();
 
 function openPlan(node: WireGuardNode): void {
   planNode.value = node;
+  planError.value = "";
   listenPort.value = node.listen_port ? String(node.listen_port) : "51820";
 }
 
 async function createPlan(): Promise<void> {
   if (!planNode.value || planning.value) return;
   planning.value = true;
-  error.value = "";
+  planError.value = "";
   try {
     const port = normalizedPort(listenPort.value, planNode.value.listen_port || 51820);
     approval.value = await call<Approval>("plan", { node_id: planNode.value.node_id, listen_port: port });
     notice.value = `Approval ${approval.value.id} created; no host changes were applied`;
     planNode.value = undefined;
   } catch (cause) {
-    error.value = safeErrorMessage(cause, "WireGuard plan could not be created");
+    // Includes the port validation error from normalizedPort, which is about
+    // the field two rows above and has to appear next to it.
+    planError.value = safeErrorMessage(cause, "WireGuard plan could not be created");
   } finally {
     planning.value = false;
     await resize();
@@ -217,8 +225,21 @@ function onKeydown(event: KeyboardEvent): void {
   else planNode.value = undefined;
 }
 
+let overlayReturnFocus: HTMLElement | undefined;
+
 watch(openOverlayKey, async (key) => {
-  if (!key) return;
+  if (!key) {
+    // Hand focus back to whatever opened the overlay. Without this the
+    // keyboard operator lands on the body and starts again from the top.
+    const target = overlayReturnFocus;
+    overlayReturnFocus = undefined;
+    if (target?.isConnected) target.focus();
+    return;
+  }
+  const active = document.activeElement;
+  if (!overlayReturnFocus && active instanceof HTMLElement && !isInsideOverlay(active)) {
+    overlayReturnFocus = active;
+  }
   await nextTick();
   const panel = document.querySelector<HTMLElement>(".overlay-scrim .modal");
   if (!panel) return;
@@ -226,6 +247,12 @@ watch(openOverlayKey, async (key) => {
   panel.focus();
   await resize();
 });
+
+const handshakeExpired = useHandshakeTimeout(init);
+
+function reloadFrame(): void {
+  window.location.reload();
+}
 
 let observer: ResizeObserver | undefined;
 let poller: ReturnType<typeof setInterval> | undefined;
@@ -282,7 +309,14 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <template v-if="loading">
+    <div v-if="handshakeExpired && !init && !bootError" class="empty-state">
+      <CircleAlert :size="26" aria-hidden="true" />
+      <strong>The console has not answered</strong>
+      <p>This page loads inside the Lattice console and waits for it to hand over a session. That handover has not arrived, so there is nothing to show and nothing has failed either: the page is still listening. Opened outside the console, it will always look like this.</p>
+      <div class="empty-actions"><button class="button secondary" type="button" @click="reloadFrame"><RefreshCw :size="15" aria-hidden="true" /> Reload the page</button></div>
+    </div>
+
+    <template v-else-if="loading">
       <div class="skeleton-strip" aria-hidden="true">
         <div v-for="cell in 4" :key="cell"><span class="skeleton-bar short" /><span class="skeleton-bar tall" /></div>
       </div>
@@ -491,6 +525,9 @@ onBeforeUnmount(() => {
             <div><Route :size="16" aria-hidden="true" /><span><strong>{{ peerCount }} peers</strong><small>Each allowed as /32 or /128</small></span></div>
             <div><KeyRound :size="16" aria-hidden="true" /><span><strong>Private key placeholder</strong><small>Substituted only on the target node</small></span></div>
             <div><ShieldCheck :size="16" aria-hidden="true" /><span><strong>Pending approval</strong><small>No direct apply from this plugin page</small></span></div>
+          </div>
+          <div v-if="planError" class="alert" role="alert">
+            <CircleAlert :size="17" aria-hidden="true" /><span>{{ planError }}</span>
           </div>
           <div v-if="peerCount">
             <p class="field-help">Peers this session can see, which the plan will contain:</p>

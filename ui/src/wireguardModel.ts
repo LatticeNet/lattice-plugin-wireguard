@@ -36,10 +36,32 @@ export function redactedKey(key?: string): string {
   return `${key.slice(0, 8)}...${key.slice(-6)}`;
 }
 
-export function normalizedPort(value: string, fallback = 51820): number {
-  if (!value.trim()) return fallback;
-  const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Listen port must be an integer from 1 to 65535");
+/**
+ * The listen port to send, from whatever the port field currently holds.
+ *
+ * Takes `unknown` on purpose. Vue applies the `.number` modifier implicitly to
+ * `v-model` on an `<input type="number">`, so this field is a string until the
+ * operator touches it and a number (or NaN, when cleared) afterwards. Typing
+ * `value.trim()` against that threw "value.trim is not a function" the moment
+ * anyone edited the port, and the failure landed in a page-level error slot
+ * behind the dialog's own scrim, so the Generate button simply looked dead.
+ */
+export function normalizedPort(value: unknown, fallback = 51820): number {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "number") {
+    // An emptied number input yields NaN, which means "unset", not "invalid".
+    if (Number.isNaN(value)) return fallback;
+    return assertPort(value);
+  }
+  const text = String(value).trim();
+  if (!text) return fallback;
+  return assertPort(Number(text));
+}
+
+function assertPort(port: number): number {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("Listen port must be a whole number from 1 to 65535");
+  }
   return port;
 }
 
