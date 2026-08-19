@@ -37,6 +37,9 @@ import {
 } from "./wireguardModel";
 
 const SERVICE = "latticenet.wireguard/networks";
+/** Shown when the console never completed the handshake and named no reason. */
+const HANDSHAKE_FALLBACK =
+  "The Lattice console did not hand this page a session, so there is no WireGuard state to read.";
 const init = ref<HostInit>();
 const nodes = ref<WireGuardNode[]>([]);
 const loading = ref(true);
@@ -53,11 +56,11 @@ try {
     init.value = value;
     await refresh();
   }).catch((cause) => {
-    bootError.value = safeErrorMessage(cause, "Plugin host unavailable");
+    bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
     loading.value = false;
   });
 } catch (cause) {
-  bootError.value = safeErrorMessage(cause, "Plugin host unavailable");
+  bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
   loading.value = false;
 }
 
@@ -105,7 +108,9 @@ function sortMark(key: NodeSortKey | ""): string {
 }
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
-  if (!bridge || !canCall(init.value, SERVICE, method)) throw new Error(`Method ${method} is not available for this session`);
+  if (!bridge || !canCall(init.value, SERVICE, method)) {
+    throw new Error(`This session cannot run ${method} on WireGuard, so nothing was sent to any node.`);
+  }
   return bridge.call<T>(SERVICE, method, payload).promise;
 }
 
@@ -120,7 +125,10 @@ async function refresh(background = false): Promise<void> {
       selectedNodeID.value = nodes.value.find((node) => node.configuration === "ready")?.node_id ?? nodes.value[0]?.node_id ?? "";
     }
   } catch (cause) {
-    error.value = safeErrorMessage(cause, "WireGuard network state could not be loaded");
+    error.value = safeErrorMessage(
+      cause,
+      "The overview request did not come back, so anything listed below is from an earlier refresh.",
+    );
   } finally {
     loading.value = false;
     refreshing.value = false;
@@ -151,12 +159,15 @@ async function createPlan(): Promise<void> {
   try {
     const port = normalizedPort(listenPort.value, planNode.value.listen_port || 51820);
     approval.value = await call<Approval>("plan", { node_id: planNode.value.node_id, listen_port: port });
-    notice.value = `Approval ${approval.value.id} created; no host changes were applied`;
+    notice.value = `Approval ${approval.value.id} created for ${approval.value.node_id}. Nothing has been written to the node.`;
     planNode.value = undefined;
   } catch (cause) {
     // Includes the port validation error from normalizedPort, which is about
     // the field two rows above and has to appear next to it.
-    planError.value = safeErrorMessage(cause, "WireGuard plan could not be created");
+    planError.value = safeErrorMessage(
+      cause,
+      "No plan was created, so nothing has changed on this node.",
+    );
   } finally {
     planning.value = false;
     await resize();
@@ -194,9 +205,9 @@ function selectPlan(): void {
 }
 
 function formatDate(value?: string): string {
-  if (!value) return "-";
+  if (!value) return "not reported";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
+  if (Number.isNaN(date.getTime())) return "not reported";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
@@ -279,7 +290,7 @@ onBeforeUnmount(() => {
       <div class="title-mark"><Spline :size="19" aria-hidden="true" /></div>
       <div class="title-copy">
         <div class="title-line"><h1>WireGuard Networks</h1><span class="plugin-label">WireGuard plugin</span></div>
-        <p>Secret-free mesh topology, node readiness and approval-bound configuration plans.</p>
+        <p>Mesh readiness across the fleet. A configuration plan reaches a node only after you approve it, and no private key passes through this page.</p>
       </div>
       <button class="button secondary" type="button" :disabled="loading || refreshing" @click="refresh(true)">
         <LoaderCircle v-if="refreshing" class="spin" :size="15" aria-hidden="true" />
@@ -290,7 +301,7 @@ onBeforeUnmount(() => {
 
     <div v-if="bootError || error" class="alert" role="alert">
       <CircleAlert :size="17" aria-hidden="true" />
-      <span><strong>{{ bootError ? 'The plugin host is unavailable' : 'WireGuard state could not be loaded' }}</strong>{{ bootError || error }}</span>
+      <span><strong>{{ bootError ? 'This page has no console session' : 'The fleet could not be refreshed' }}</strong>{{ bootError || error }}</span>
       <button v-if="!bootError" class="button secondary compact" type="button" :disabled="refreshing" @click="refresh(true)">
         <LoaderCircle v-if="refreshing" class="spin" :size="13" aria-hidden="true" /> Try again
       </button>
@@ -330,7 +341,7 @@ onBeforeUnmount(() => {
     <div v-else-if="(bootError || error) && !nodes.length" class="empty-state">
       <CircleAlert :size="26" aria-hidden="true" />
       <strong>Nothing could be loaded</strong>
-      <p>The overview request did not come back, so this is not an empty fleet: it is an unanswered question. The message above is what the control plane said.</p>
+      <p>This is not an empty fleet, it is an unanswered question. The message above says what stopped it.</p>
       <div v-if="!bootError" class="empty-actions"><button class="button secondary" type="button" :disabled="refreshing" @click="refresh(true)"><RefreshCw :size="15" aria-hidden="true" /> Try again</button></div>
     </div>
 
@@ -340,21 +351,21 @@ onBeforeUnmount(() => {
           <span>Ready nodes</span><strong>{{ readiness.ready }} / {{ readiness.total }}</strong>
           <small>{{ readiness.total - readiness.ready }} still missing an address or a key</small>
         </div>
-        <div><span>Online mesh</span><strong>{{ readiness.onlineReady }}</strong><small>Ready, reachable, not disabled</small></div>
+        <div><span>Online mesh</span><strong>{{ readiness.onlineReady }}</strong><small>Ready, agent online, not disabled</small></div>
         <div><span>Public endpoints</span><strong>{{ readiness.endpoints }}</strong><small>Reachable from outside the mesh</small></div>
         <div><span>Partial setup</span><strong>{{ readiness.needsKey + readiness.needsAddress }}</strong><small>One half of the pair reported</small></div>
       </section>
 
       <section class="topology-panel">
         <header>
-          <div><h2>Full-mesh readiness</h2><p>Each ready peer receives every other ready peer as a host route.</p></div>
+          <div><h2>Full-mesh readiness</h2><p>Every mesh-ready node gets a host route to each of the others.</p></div>
           <Network :size="18" aria-hidden="true" />
         </header>
         <div v-if="readyNodes.length" class="mesh">
           <div class="mesh-core">
             <Spline :size="23" aria-hidden="true" />
-            <strong>{{ readyNodes.length }} peers</strong>
-            <span>{{ peerCount }} peer blocks each</span>
+            <strong>{{ readyNodes.length }} mesh-ready nodes</strong>
+            <span>{{ peerCount }} peer blocks in each config</span>
           </div>
           <button
             v-for="node in readyNodes"
@@ -403,7 +414,7 @@ onBeforeUnmount(() => {
                  host route under an "Address" label was a guess wearing a fact's
                  clothes. -->
             <div><dt>Reported address</dt><dd :title="previewNode.address || 'not reported'">{{ previewNode.address || 'not reported' }}</dd></div>
-            <div><dt>Pinned as peer</dt><dd :title="hostRoute(previewNode.address) || 'not reported'">{{ hostRoute(previewNode.address) || 'not reported' }}</dd></div>
+            <div><dt>AllowedIPs on every peer</dt><dd :title="hostRoute(previewNode.address) || 'not reported'">{{ hostRoute(previewNode.address) || 'not reported' }}</dd></div>
             <div><dt>Listen port</dt><dd>{{ previewNode.listen_port || 51820 }}</dd></div>
             <div><dt>Public key</dt><dd :title="redactedKey(previewNode.public_key)">{{ redactedKey(previewNode.public_key) }}</dd></div>
             <div><dt>Endpoint</dt><dd :title="previewNode.endpoint || 'not reported'">{{ previewNode.endpoint || 'not reported' }}</dd></div>
@@ -457,7 +468,7 @@ onBeforeUnmount(() => {
 
       <section class="node-panel">
         <header>
-          <div><h2>Fleet nodes</h2><p>Readiness reflects the control-plane fields available for mesh compilation.</p></div>
+          <div><h2>Fleet nodes</h2><p>A node joins the mesh once the control plane holds both its WireGuard address and its public key.</p></div>
           <span class="status" data-tone="neutral">{{ readiness.total }} nodes</span>
         </header>
         <div v-if="nodes.length" class="table-wrap">
@@ -474,9 +485,9 @@ onBeforeUnmount(() => {
             <tbody>
               <tr v-for="node in sortedNodes" :key="node.node_id">
                 <td><strong :title="node.name || node.node_id">{{ node.name || node.node_id }}</strong><small :title="node.node_id">{{ node.node_id }}</small></td>
-                <td class="mono" :title="node.address ? `reported ${node.address}, pinned as peer to ${hostRoute(node.address)}` : 'no address reported'">{{ node.address || '-' }}</td>
+                <td class="mono" :title="node.address ? `reported ${node.address}, pinned into peer AllowedIPs as ${hostRoute(node.address)}` : 'no address reported'">{{ node.address || 'not reported' }}</td>
                 <td class="mono" :title="node.public_key ? 'Public key, shown truncated' : 'The agent has not reported a public key'">{{ redactedKey(node.public_key) }}</td>
-                <td class="mono" :title="node.endpoint || 'not reported'">{{ node.endpoint || '-' }}</td>
+                <td class="mono" :title="node.endpoint || 'No public endpoint reported, so peers cannot dial in to this node'">{{ node.endpoint || 'not reported' }}</td>
                 <td>
                   <span class="status" :data-tone="node.configuration === 'ready' ? 'healthy' : node.configuration === 'partial' ? 'warning' : 'neutral'">{{ node.configuration }}</span>
                   <small v-if="readinessGap(node) !== 'ready'">{{ readinessGapLabel(readinessGap(node)) }}</small>
@@ -524,7 +535,7 @@ onBeforeUnmount(() => {
           <div class="plan-facts">
             <div><Route :size="16" aria-hidden="true" /><span><strong>{{ peerCount }} peers</strong><small>Each allowed as /32 or /128</small></span></div>
             <div><KeyRound :size="16" aria-hidden="true" /><span><strong>Private key placeholder</strong><small>Substituted only on the target node</small></span></div>
-            <div><ShieldCheck :size="16" aria-hidden="true" /><span><strong>Pending approval</strong><small>No direct apply from this plugin page</small></span></div>
+            <div><ShieldCheck :size="16" aria-hidden="true" /><span><strong>Pending approval</strong><small>Nothing is written to {{ planNode.name || planNode.node_id }} until you approve it</small></span></div>
           </div>
           <div v-if="planError" class="alert" role="alert">
             <CircleAlert :size="17" aria-hidden="true" /><span>{{ planError }}</span>
@@ -555,7 +566,7 @@ onBeforeUnmount(() => {
     <div v-if="approval" class="overlay-scrim" :style="overlayStyle" @mousedown.self="approval = undefined">
       <section tabindex="-1" class="modal wide plan-review" role="dialog" aria-modal="true" aria-labelledby="approval-title">
         <header>
-          <div><h2 id="approval-title">Plan ready for approval</h2><p>{{ approval.id }} / {{ approval.status }} / {{ approval.node_id }}</p></div>
+          <div><h2 id="approval-title">Plan ready for approval</h2><p>Approval {{ approval.id }} for {{ approval.node_id }}, currently {{ approval.status }}.</p></div>
           <div class="approval-actions">
             <button class="icon-button bordered" type="button" :aria-label="copied ? 'Copied' : 'Copy the rendered plan'" :title="copied ? 'Copied' : 'Copy the rendered plan'" @click="copyPlan(approval.plan)">
               <CheckCircle2 v-if="copied" :size="15" />
