@@ -3,11 +3,13 @@
  * Same three constraints as the other Lattice plugin UIs, and none of them are
  * cosmetic.
  *
- * 1. The plugin renders inside a sandboxed iframe the host sizes to the height
- *    the plugin reports. The frame is NOT a viewport: `position: fixed`
- *    resolves against the whole frame, `vh` is the frame height rather than the
- *    window, and `position: sticky` never activates. Overlays are absolute and
- *    anchored in document coordinates (src/overlayAnchor.ts); ceilings are px.
+ * 1. The plugin renders inside a sandboxed iframe the host sizes to fill the
+ *    console's main region. The frame IS a viewport: this document scrolls
+ *    inside it, and `position: fixed`, `position: sticky` and `vh` all resolve
+ *    against the visible window. None of that held while the host sized the
+ *    frame to the height this page reported, which is why overlays were
+ *    anchored in document coordinates (src/overlayAnchor.ts) and ceilings were
+ *    px. Overlays are viewport-centred now and that anchor is inert.
  * 2. The host console is fluid edge to edge, so this workspace is fluid too.
  *    Only prose carries a local `ch` measure.
  * 3. Colour comes from host tokens with fallbacks. Status tones are the only
@@ -38,7 +40,9 @@
   --radius: 6px;
   --radius-lg: 8px;
 
-  --overlay-max-height: 620px;
+  /* The window, less room to read the page behind it. A px ceiling here used
+     to be the only safe kind: `vh` was a share of the whole document. */
+  --overlay-max-height: calc(100vh - 2 * var(--sp-6, 32px));
   --measure: 62ch;
 
   --tone-ok: #147a4b;
@@ -228,22 +232,24 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
 .status[data-tone="neutral"] { color: var(--muted-foreground, #8a949e); }
 
 /* ── overlays ─────────────────────────────────────────────────────────────
-   Absolute, never fixed; anchored to the click in document coordinates; every
-   ceiling in px. See the file header and src/overlayAnchor.ts. */
+   Fixed and centred on the window. The frame is a viewport, so the scrim covers
+   what the operator can see and the modal takes the height that is there. The
+   scrim was absolute and the modal was pushed down by --overlay-anchor-top, a
+   document coordinate: under a viewport frame that offset drops the modal below
+   the fold as soon as the page is scrolled, so it is gone and the variable the
+   screens still set is inert. See the file header. */
 .overlay-scrim {
-  position: absolute;
+  position: fixed;
   z-index: 1000;
   inset: 0;
-  min-height: 100%;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: 0 var(--sp-4) var(--sp-7);
+  padding: var(--sp-4);
   background: color-mix(in srgb, #05070a 62%, transparent);
 }
 .modal {
   width: min(560px, 100%);
-  margin-top: var(--overlay-anchor-top, var(--sp-5));
   max-height: var(--overlay-max-height);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -295,7 +301,7 @@ th[aria-sort="ascending"] .sort-button, th[aria-sort="descending"] .sort-button 
   .summary-strip > div:last-child, .skeleton-strip > div:last-child { border-bottom: 0; }
   .interface-panel dl > div { grid-template-columns: 1fr; gap: 2px; }
   .interface-panel dd { text-align: left; }
-  .overlay-scrim { padding: 0 var(--sp-2) var(--sp-6); }
+  .overlay-scrim { padding: var(--sp-2); }
   .modal > header, .modal > footer, .plan-body { padding: var(--sp-3); }
   .modal > footer { flex-wrap: wrap; }
   .modal > footer .button { flex: 1 1 auto; }
