@@ -145,6 +145,9 @@ export function sortNodes(nodes: readonly WireGuardNode[], key: NodeSortKey, dir
   return [...nodes].sort((left, right) => {
     const a = nodeSortValue(left, key);
     const b = nodeSortValue(right, key);
+    // The tie-break deliberately does not follow the primary direction:
+    // reversing "configuration" should reverse the readiness groups, not
+    // shuffle the nodes inside each one.
     if (a === b) return (left.name || left.node_id).localeCompare(right.name || right.node_id);
     if (typeof a === "number" && typeof b === "number") return (a - b) * sign;
     return String(a).localeCompare(String(b)) * sign;

@@ -197,7 +197,11 @@ async function resize(): Promise<void> { await nextTick(); bridge?.resize(docume
 // than in front of the operator. See src/overlayAnchor.ts.
 const overlayAnchorTop = ref(MIN_ANCHOR_TOP);
 const overlayStyle = computed(() => ({ "--overlay-anchor-top": `${overlayAnchorTop.value}px` }));
-const overlayOpen = computed(() => !!planNode.value || !!approval.value);
+// Which overlay is open, not merely whether one is. Generating a plan closes
+// the form and opens the review in the same tick; a boolean stays true across
+// that swap, so the review would never be focused or clamped.
+const openOverlayKey = computed(() => (approval.value ? "approval" : planNode.value ? "plan" : ""));
+const overlayOpen = computed(() => openOverlayKey.value !== "");
 
 function recordAnchor(event: Event): void {
   if (overlayOpen.value || isInsideOverlay(event.target)) return;
@@ -210,8 +214,8 @@ function onKeydown(event: KeyboardEvent): void {
   else planNode.value = undefined;
 }
 
-watch(overlayOpen, async (open) => {
-  if (!open) return;
+watch(openOverlayKey, async (key) => {
+  if (!key) return;
   await nextTick();
   const panel = document.querySelector<HTMLElement>(".overlay-scrim .modal");
   if (!panel) return;
