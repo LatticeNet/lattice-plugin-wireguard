@@ -74,14 +74,30 @@ export function handlers(scenario: Scenario): Record<string, (payload: any) => u
     "networks/plan": ({ node_id, listen_port }: { node_id: string; listen_port: number }) => {
       const target = nodes.find((node) => node.node_id === node_id);
       if (!target) throw new Error(`node "${node_id}" was not found`);
-      const peers = nodes.filter((node) => node.configuration === "ready" && node.node_id !== node_id);
+      // Mirrors lattice-server/internal/wireguard GenerateConfig exactly: the
+      // interface takes the wider mesh prefix the server assigns, the field
+      // order is Address / ListenPort / PrivateKey, peers sort by AllowedIPs,
+      // and every peer carries PersistentKeepalive. The harness has to answer
+      // what the server answers, or it cannot expose a preview that drifts
+      // from the applied config, which is exactly the bug that shipped here.
+      const peers = nodes
+        .filter((node) => node.configuration === "ready" && node.node_id !== node_id && node.address)
+        .map((peer) => ({ ...peer, allowed: `${peer.address}/32` }))
+        .sort((left, right) => left.allowed.localeCompare(right.allowed));
       const plan = [
-        "# wireguard plan (dry run, no host changes made here)",
         "[Interface]",
-        "PrivateKey = __LATTICE_WG_PRIVATE_KEY__",
-        `Address = ${target.address}/32`,
+        `Address = ${target.address}/24`,
         `ListenPort = ${listen_port}`,
-        ...peers.flatMap((peer) => ["", "[Peer]", `# ${peer.name}`, `PublicKey = ${peer.public_key}`, `AllowedIPs = ${peer.address}/32`, ...(peer.endpoint ? [`Endpoint = ${peer.endpoint}`] : [])]),
+        "PrivateKey = __LATTICE_WG_PRIVATE_KEY__",
+        ...peers.flatMap((peer) => [
+          "",
+          "[Peer]",
+          `# ${peer.name}`,
+          `PublicKey = ${peer.public_key}`,
+          `AllowedIPs = ${peer.allowed}`,
+          ...(peer.endpoint ? [`Endpoint = ${peer.endpoint}`] : []),
+          "PersistentKeepalive = 25",
+        ]),
         "",
       ].join("\n");
       return {

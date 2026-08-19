@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   PRIVATE_KEY_PLACEHOLDER,
+  PLAN_UNKNOWNS,
   hostRoute,
+  meshPeersFor,
   meshReadyNodes,
   normalizedPort,
-  previewConfig,
   readinessGap,
   sortNodes,
   summarizeReadiness,
@@ -23,11 +24,19 @@ describe("wireguardModel", () => {
     expect(hostRoute("fd00::1")).toBe("fd00::1/128");
   });
 
-  it("renders a secret-free preview with the private-key placeholder", () => {
-    const config = previewConfig(nodes[0], nodes, 51820);
-    expect(config).toContain(`PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`);
-    expect(config).toContain("AllowedIPs = 10.66.0.2/32");
-    expect(config).not.toContain("private-secret");
+  it("keeps the private-key placeholder as the only key token this plugin knows", () => {
+    // The plugin no longer renders a wg0.conf at all: the control plane owns
+    // the only renderer. The placeholder survives because the security band
+    // names it, and it must stay a placeholder.
+    expect(PRIVATE_KEY_PLACEHOLDER).toBe("__LATTICE_WG_PRIVATE_KEY__");
+  });
+
+  it("names every field the control plane decides and this plugin cannot show", () => {
+    // If this list ever shrinks silently, the screen starts implying it knows
+    // more about the applied config than it does.
+    expect(PLAN_UNKNOWNS.some((item) => item.includes("interface address prefix"))).toBe(true);
+    expect(PLAN_UNKNOWNS.some((item) => item.includes("PersistentKeepalive"))).toBe(true);
+    expect(PLAN_UNKNOWNS.some((item) => item.includes("read scope"))).toBe(true);
   });
 
   it("bounds listen ports", () => {
@@ -101,18 +110,21 @@ describe("sortNodes", () => {
   });
 });
 
-describe("meshReadyNodes", () => {
-  it("agrees with the peer blocks the preview writes, so the counts cannot drift", () => {
-    const fleet: WireGuardNode[] = [
-      { node_id: "self", name: "self", address: "10.66.0.1", public_key: "s".repeat(44), online: true, configuration: "ready" },
-      { node_id: "ok", name: "ok", address: "10.66.0.2", public_key: "o".repeat(44), online: true, configuration: "ready" },
-      // The server called it ready; the address never arrived. The preview
-      // cannot write a peer block for it, so it must not be counted as one.
-      { node_id: "claims-ready", name: "claims", public_key: "c".repeat(44), online: true, configuration: "ready" },
-    ];
-    const ready = meshReadyNodes(fleet);
-    expect(ready.map((node) => node.node_id)).toEqual(["self", "ok"]);
-    const blocks = previewConfig(fleet[0], fleet).split("\n").filter((line) => line === "[Peer]").length;
-    expect(blocks).toBe(ready.length - 1);
+describe("meshReadyNodes and meshPeersFor", () => {
+  const fleet: WireGuardNode[] = [
+    { node_id: "self", name: "self", address: "10.66.0.1", public_key: "s".repeat(44), online: true, configuration: "ready" },
+    { node_id: "ok", name: "ok", address: "10.66.0.2", public_key: "o".repeat(44), online: true, configuration: "ready" },
+    // The server called it ready; the address never arrived. BuildMesh skips a
+    // peer with no mesh IP, so it must not be counted as one here either.
+    { node_id: "claims-ready", name: "claims", public_key: "c".repeat(44), online: true, configuration: "ready" },
+  ];
+
+  it("applies the server's skip rule rather than trusting the configuration field", () => {
+    expect(meshReadyNodes(fleet).map((node) => node.node_id)).toEqual(["self", "ok"]);
+  });
+
+  it("excludes the target from its own peer list", () => {
+    expect(meshPeersFor(fleet[0], fleet).map((node) => node.node_id)).toEqual(["ok"]);
+    expect(meshPeersFor(undefined, fleet)).toEqual([]);
   });
 });

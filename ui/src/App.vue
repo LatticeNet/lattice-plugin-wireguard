@@ -21,8 +21,9 @@ import {
   PRIVATE_KEY_PLACEHOLDER,
   hostRoute,
   normalizedPort,
+  PLAN_UNKNOWNS,
+  meshPeersFor,
   meshReadyNodes,
-  previewConfig,
   readinessGap,
   readinessGapLabel,
   redactedKey,
@@ -66,7 +67,7 @@ const readiness = computed(() => summarizeReadiness(nodes.value));
 // is still what the table column reports.
 const readyNodes = computed(() => meshReadyNodes(nodes.value));
 const previewNode = computed(() => nodes.value.find((node) => node.node_id === selectedNodeID.value) ?? readyNodes.value[0]);
-const preview = computed(() => previewConfig(previewNode.value, readyNodes.value));
+const visiblePeers = computed(() => meshPeersFor(previewNode.value, nodes.value));
 const peerCount = computed(() => Math.max(0, readyNodes.value.length - 1));
 
 // ── fleet table ordering ─────────────────────────────────────────────────
@@ -154,11 +155,13 @@ async function createPlan(): Promise<void> {
   }
 }
 
+// Copy belongs on the plan the control plane rendered, not on anything this
+// plugin drew. That document is the one an operator approves and applies.
 const copied = ref(false);
 const copyFailed = ref(false);
-const previewBlock = ref<HTMLElement>();
+const planBlock = ref<HTMLElement>();
 
-async function copyPreview(value: string): Promise<void> {
+async function copyPlan(value: string): Promise<void> {
   copyFailed.value = false;
   try {
     await navigator.clipboard.writeText(value);
@@ -168,12 +171,12 @@ async function copyPreview(value: string): Promise<void> {
     // The sandbox can withhold clipboard-write. Selecting the block leaves the
     // operator one keystroke from the same result instead of a dead end.
     copyFailed.value = true;
-    selectPreview();
+    selectPlan();
   }
 }
 
-function selectPreview(): void {
-  const block = previewBlock.value;
+function selectPlan(): void {
+  const block = planBlock.value;
   if (!block) return;
   const range = document.createRange();
   range.selectNodeContents(block);
@@ -325,12 +328,12 @@ onBeforeUnmount(() => {
             type="button"
             class="peer"
             :aria-pressed="previewNode?.node_id === node.node_id"
-            :title="`${node.name || node.node_id} · ${hostRoute(node.address)}`"
+            :title="`${node.name || node.node_id}, reported ${node.address}`"
             @click="selectedNodeID = node.node_id"
           >
             <span class="online-dot" :data-online="node.online && !node.disabled" />
             <strong>{{ node.name || node.node_id }}</strong>
-            <small>{{ hostRoute(node.address) }}</small>
+            <small>{{ node.address }}</small>
           </button>
         </div>
 
@@ -361,7 +364,12 @@ onBeforeUnmount(() => {
             <span class="status" :data-tone="previewNode.online && !previewNode.disabled ? 'healthy' : 'warning'">{{ previewNode.disabled ? 'disabled' : previewNode.online ? 'online' : 'offline' }}</span>
           </header>
           <dl>
-            <div><dt>Address</dt><dd :title="hostRoute(previewNode.address)">{{ hostRoute(previewNode.address) || 'not reported' }}</dd></div>
+            <!-- The reported address, verbatim. The prefix the interface is
+                 actually given is assigned by the control plane, so printing a
+                 host route under an "Address" label was a guess wearing a fact's
+                 clothes. -->
+            <div><dt>Reported address</dt><dd :title="previewNode.address || 'not reported'">{{ previewNode.address || 'not reported' }}</dd></div>
+            <div><dt>Pinned as peer</dt><dd :title="hostRoute(previewNode.address) || 'not reported'">{{ hostRoute(previewNode.address) || 'not reported' }}</dd></div>
             <div><dt>Listen port</dt><dd>{{ previewNode.listen_port || 51820 }}</dd></div>
             <div><dt>Public key</dt><dd :title="redactedKey(previewNode.public_key)">{{ redactedKey(previewNode.public_key) }}</dd></div>
             <div><dt>Endpoint</dt><dd :title="previewNode.endpoint || 'not reported'">{{ previewNode.endpoint || 'not reported' }}</dd></div>
@@ -370,26 +378,46 @@ onBeforeUnmount(() => {
             <div v-if="readinessGap(previewNode) !== 'ready'"><dt>Mesh readiness</dt><dd :title="readinessGapLabel(readinessGap(previewNode))">{{ readinessGapLabel(readinessGap(previewNode)) }}</dd></div>
           </dl>
         </article>
+        <!-- This panel used to draw a wg0.conf. It was not the wg0.conf that
+             gets applied: the control plane renders the real one and assigns
+             the interface a wider prefix than the host route shown here, plus
+             a keepalive this plugin never sees. Reviewing one document and
+             approving another is the defect, so the drawing is gone. What is
+             left is only what the overview call actually returned. -->
         <article class="preview-panel">
           <header>
-            <div><h2>Secret-free config preview</h2><p>{{ peerCount }} peer blocks, host-route AllowedIPs</p></div>
-            <button class="icon-button bordered" type="button" :disabled="!preview" :aria-label="copied ? 'Copied' : 'Copy preview'" :title="copied ? 'Copied' : 'Copy preview'" @click="copyPreview(preview)">
-              <CheckCircle2 v-if="copied" :size="15" />
-              <Copy v-else :size="15" />
-            </button>
+            <div>
+              <h2>Mesh membership</h2>
+              <p>The peers this session can see for {{ previewNode.name || previewNode.node_id }}. Not the applied configuration.</p>
+            </div>
+            <span class="status" data-tone="neutral">{{ visiblePeers.length }} visible</span>
           </header>
-          <p v-if="copyFailed" class="approval-banner" role="status">
-            <CircleAlert :size="15" aria-hidden="true" />
-            <span>The sandbox refused clipboard access. The preview is selected: copy it with the keyboard.</span>
-          </p>
-          <!-- An empty <pre> reads as a bug. There is a reason no config can be
-               rendered, and it is the same reason the node is not in the mesh. -->
-          <div v-if="!preview" class="empty-state">
-            <FileCode2 :size="24" aria-hidden="true" />
-            <strong>No configuration to render</strong>
-            <p>{{ previewNode.name || previewNode.node_id }} has no WireGuard address, so there is no interface to write. {{ readinessGapLabel(readinessGap(previewNode)) }}.</p>
+          <div v-if="visiblePeers.length" class="peer-table-wrap">
+            <table class="peer-table">
+              <caption class="sr-only">Peers visible to this session</caption>
+              <thead><tr><th>Peer</th><th>AllowedIPs</th><th>Endpoint</th></tr></thead>
+              <tbody>
+                <tr v-for="peer in visiblePeers" :key="peer.node_id">
+                  <td><strong :title="peer.name || peer.node_id">{{ peer.name || peer.node_id }}</strong><small :title="redactedKey(peer.public_key)">{{ redactedKey(peer.public_key) }}</small></td>
+                  <td class="mono" :title="hostRoute(peer.address)">{{ hostRoute(peer.address) }}</td>
+                  <td class="mono" :title="peer.endpoint || 'dial-out only, no public endpoint'">{{ peer.endpoint || 'dial-out only' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-          <pre v-else ref="previewBlock">{{ preview }}</pre>
+          <div v-else class="empty-state">
+            <FileCode2 :size="24" aria-hidden="true" />
+            <strong>No peers to list</strong>
+            <p v-if="readinessGap(previewNode) !== 'ready'">{{ previewNode.name || previewNode.node_id }} is not mesh-ready itself. {{ readinessGapLabel(readinessGap(previewNode)) }}.</p>
+            <p v-else>No other node is mesh-ready, so this node would be given a mesh with no peers in it.</p>
+          </div>
+          <div class="plan-caveat">
+            <strong>The applied configuration is rendered by the control plane, not here.</strong>
+            <p>It is shown in full on the approval, before anything reaches a node. This panel cannot show:</p>
+            <ul>
+              <li v-for="item in PLAN_UNKNOWNS" :key="item">{{ item }}</li>
+            </ul>
+          </div>
         </article>
       </section>
 
@@ -412,7 +440,7 @@ onBeforeUnmount(() => {
             <tbody>
               <tr v-for="node in sortedNodes" :key="node.node_id">
                 <td><strong :title="node.name || node.node_id">{{ node.name || node.node_id }}</strong><small :title="node.node_id">{{ node.node_id }}</small></td>
-                <td class="mono" :title="hostRoute(node.address) || 'not reported'">{{ hostRoute(node.address) || '-' }}</td>
+                <td class="mono" :title="node.address ? `reported ${node.address}, pinned as peer to ${hostRoute(node.address)}` : 'no address reported'">{{ node.address || '-' }}</td>
                 <td class="mono" :title="node.public_key ? 'Public key, shown truncated' : 'The agent has not reported a public key'">{{ redactedKey(node.public_key) }}</td>
                 <td class="mono" :title="node.endpoint || 'not reported'">{{ node.endpoint || '-' }}</td>
                 <td>
@@ -465,13 +493,17 @@ onBeforeUnmount(() => {
             <div><ShieldCheck :size="16" aria-hidden="true" /><span><strong>Pending approval</strong><small>No direct apply from this plugin page</small></span></div>
           </div>
           <div v-if="peerCount">
-            <p class="field-help">Peers this plan writes into the interface:</p>
-            <ul class="plan-peers" aria-label="Peers included in this plan">
-              <li v-for="peer in readyNodes.filter((value) => value.node_id !== planNode!.node_id)" :key="peer.node_id">
+            <p class="field-help">Peers this session can see, which the plan will contain:</p>
+            <ul class="plan-peers" aria-label="Peers visible to this session">
+              <li v-for="peer in meshPeersFor(planNode, nodes)" :key="peer.node_id">
                 {{ peer.name || peer.node_id }} · {{ hostRoute(peer.address) }}
               </li>
             </ul>
           </div>
+          <!-- The control plane builds the plan from the whole node store; this
+               page only ever saw the nodes the session may read. So this list
+               is a lower bound, and saying otherwise would under-report peers. -->
+          <p class="field-help">The control plane builds the plan from every node in the fleet. If this session cannot read some of them, the plan will contain peers that are not listed above. The full document is on the approval.</p>
         </div>
         <footer>
           <button class="button secondary" type="button" @click="planNode = undefined">Cancel</button>
@@ -487,13 +519,23 @@ onBeforeUnmount(() => {
       <section tabindex="-1" class="modal wide plan-review" role="dialog" aria-modal="true" aria-labelledby="approval-title">
         <header>
           <div><h2 id="approval-title">Plan ready for approval</h2><p>{{ approval.id }} / {{ approval.status }} / {{ approval.node_id }}</p></div>
-          <button class="icon-button" type="button" aria-label="Close" @click="approval = undefined"><X :size="17" /></button>
+          <div class="approval-actions">
+            <button class="icon-button bordered" type="button" :aria-label="copied ? 'Copied' : 'Copy the rendered plan'" :title="copied ? 'Copied' : 'Copy the rendered plan'" @click="copyPlan(approval.plan)">
+              <CheckCircle2 v-if="copied" :size="15" />
+              <Copy v-else :size="15" />
+            </button>
+            <button class="icon-button" type="button" aria-label="Close" @click="approval = undefined"><X :size="17" /></button>
+          </div>
         </header>
         <p class="approval-banner">
           <ShieldCheck :size="17" aria-hidden="true" />
-          <span>This plan contains public peer keys and a private-key placeholder. It has not been applied. Approve it in Operations, then Approvals.</span>
+          <span>The control plane rendered this document and it is what an approved apply writes. It carries public peer keys and a private-key placeholder, and it has not been applied. Approve it in Operations, then Approvals.</span>
         </p>
-        <pre>{{ approval.plan }}</pre>
+        <p v-if="copyFailed" class="approval-banner" role="status">
+          <CircleAlert :size="15" aria-hidden="true" />
+          <span>The sandbox refused clipboard access. The document is selected: copy it with the keyboard.</span>
+        </p>
+        <pre ref="planBlock">{{ approval.plan }}</pre>
         <footer><button class="button primary" type="button" @click="approval = undefined">Done</button></footer>
       </section>
     </div>

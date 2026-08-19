@@ -14,6 +14,16 @@ export interface WireGuardNode {
   configuration: "ready" | "partial" | "missing";
 }
 
+/**
+ * The single host route a peer is pinned to in AllowedIPs.
+ *
+ * This is NOT a node's interface address. The server assigns the interface a
+ * wider mesh prefix (ensureCIDR(WireGuardIP, 24) in
+ * lattice-server/internal/wireguard), while every peer is pinned to one host
+ * route so a node cannot impersonate another node's mesh IP. The two happen to
+ * be derived from the same reported IP, which is exactly why they used to get
+ * conflated here. Use this only where the label says AllowedIPs.
+ */
 export function hostRoute(address?: string): string {
   if (!address) return "";
   if (address.includes("/")) return address;
@@ -34,30 +44,42 @@ export function normalizedPort(value: string, fallback = 51820): number {
 }
 
 /**
- * The nodes a mesh can actually be compiled from.
+ * The nodes a mesh can be compiled from, as far as this session can see.
  *
- * One definition, used by the summary, the peer grid, and the rendered
- * preview. Two definitions is how "17 peer blocks" ends up over a config that
- * carries sixteen.
+ * Matches the server's BuildMesh skip rule (a peer needs both a public key and
+ * a mesh IP) for the set of nodes `overview` returned. It cannot match the
+ * server's peer list outright, because `overview` filters nodes by the
+ * session's wireguard:read scope while the plan is built from the whole node
+ * store. A scope-limited operator therefore sees fewer peers here than the
+ * plan will contain, and the screen has to say so rather than imply this is
+ * the full set.
  */
 export function meshReadyNodes(nodes: readonly WireGuardNode[]): WireGuardNode[] {
   return nodes.filter((node) => readinessGap(node) === "ready");
 }
 
-export function previewConfig(target: WireGuardNode | undefined, peers: WireGuardNode[], port?: number): string {
-  if (!target?.address) return "";
-  const lines = [
-    "[Interface]",
-    `PrivateKey = ${PRIVATE_KEY_PLACEHOLDER}`,
-    `Address = ${hostRoute(target.address)}`,
-    `ListenPort = ${port || target.listen_port || 51820}`,
-  ];
-  for (const peer of meshReadyNodes(peers).filter((value) => value.node_id !== target.node_id)) {
-    lines.push("", "[Peer]", `# ${peer.name || peer.node_id}`, `PublicKey = ${peer.public_key}`, `AllowedIPs = ${hostRoute(peer.address)}`);
-    if (peer.endpoint) lines.push(`Endpoint = ${peer.endpoint}`);
-  }
-  return lines.join("\n");
+export function meshPeersFor(target: WireGuardNode | undefined, nodes: readonly WireGuardNode[]): WireGuardNode[] {
+  if (!target) return [];
+  return meshReadyNodes(nodes).filter((node) => node.node_id !== target.node_id);
 }
+
+/**
+ * What this plugin cannot know about the configuration that gets applied.
+ *
+ * There is exactly one renderer for a wg0.conf and it lives in the server
+ * (internal/wireguard, reachable only through the plan endpoint, which files an
+ * approval as a side effect). Every one of these is a field the server decides
+ * and never sends to this plugin, so any config this plugin drew would differ
+ * from the one an operator approves. The list is rendered in the UI rather than
+ * kept as a comment, because an unlabelled approximation of a security artefact
+ * is the defect, not the specific octet.
+ */
+export const PLAN_UNKNOWNS: readonly string[] = [
+  "the interface address prefix, which the control plane assigns and which is wider than a host route",
+  "PersistentKeepalive, which the control plane sets on every peer",
+  "MTU and DNS, when the control plane has them configured",
+  "peers on nodes outside this session's read scope, which are still written into the plan",
+];
 
 export function safeErrorMessage(value: unknown, fallback = "Request failed"): string {
   if (value instanceof Error && value.message.trim()) return value.message;

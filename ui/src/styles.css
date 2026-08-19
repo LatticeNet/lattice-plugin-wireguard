@@ -172,6 +172,16 @@ h2 { font-size: var(--text-md); font-weight: 650; }
 .interface-panel dl > div:last-child { border-bottom: 0; }
 .interface-panel dt { color: var(--muted-foreground, #65707b); font-size: var(--text-2xs); white-space: nowrap; }
 .interface-panel dd { min-width: 0; overflow: hidden; margin: 0; font-family: var(--font-mono); font-size: var(--text-2xs); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.peer-table-wrap { max-height: 300px; overflow: auto; }
+.peer-table { min-width: 0; }
+.peer-table th { position: sticky; top: 0; z-index: 1; }
+.peer-table td { padding: var(--sp-2) var(--sp-3); }
+.plan-caveat { padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border, #d9dde2); background: color-mix(in srgb, var(--muted, #eef0f2) 40%, var(--card, #fff)); font-size: var(--text-xs); }
+.plan-caveat strong { display: block; color: var(--foreground, #17191c); }
+.plan-caveat p { margin-top: var(--sp-1); color: var(--muted-foreground, #65707b); line-height: 1.5; }
+.plan-caveat ul { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); color: var(--muted-foreground, #65707b); line-height: 1.55; }
+.approval-actions { display: flex; align-items: center; gap: var(--sp-1); }
+
 .preview-panel pre, .plan-review pre {
   max-height: 380px;
   overflow: auto;
