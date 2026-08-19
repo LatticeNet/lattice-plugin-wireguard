@@ -194,7 +194,14 @@ tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: color-mix(in srgb, var(--muted, #eef0f2) 52%, transparent); }
 td strong, td small { display: block; }
 td small { max-width: 320px; overflow: hidden; margin-top: 2px; color: var(--muted-foreground, #65707b); font-size: var(--text-2xs); text-overflow: ellipsis; white-space: nowrap; }
-.actions { text-align: right; }
+/* The row action is pinned to the right edge of the scroll container. A wide
+   table inside a frame the host sizes to content puts its only horizontal
+   scrollbar far below the first row, so an action past the fold is an action
+   nobody can reach. `sticky` works here, unlike on the page itself, because
+   .table-wrap is a real scrollport. */
+.actions { position: sticky; right: 0; z-index: 1; text-align: right; background: var(--card, #fff); box-shadow: -1px 0 0 var(--border, #d9dde2); }
+th.actions { background: color-mix(in srgb, var(--muted, #eef0f2) 48%, var(--card, #fff)); }
+tbody tr:hover .actions { background: color-mix(in srgb, var(--muted, #eef0f2) 52%, var(--card, #fff)); }
 .mono { font-family: var(--font-mono); font-size: var(--text-2xs); font-variant-numeric: tabular-nums; }
 td.mono { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
