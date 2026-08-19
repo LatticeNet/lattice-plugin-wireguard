@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   CheckCircle2,
   CircleAlert,
@@ -16,13 +16,21 @@ import {
 } from "@lucide/vue";
 
 import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
+import { MIN_ANCHOR_TOP, anchorTopFrom, clampAnchorTop, isInsideOverlay } from "./overlayAnchor";
 import {
   PRIVATE_KEY_PLACEHOLDER,
   hostRoute,
   normalizedPort,
+  meshReadyNodes,
   previewConfig,
+  readinessGap,
+  readinessGapLabel,
   redactedKey,
   safeErrorMessage,
+  sortNodes,
+  summarizeReadiness,
+  type NodeSortKey,
+  type SortDirection,
   type WireGuardNode,
 } from "./wireguardModel";
 
@@ -52,16 +60,47 @@ try {
 }
 
 const canPlan = computed(() => canCall(init.value, SERVICE, "plan"));
-const sortedNodes = computed(() => [...nodes.value].sort((left, right) => {
-  if (left.online !== right.online) return left.online ? -1 : 1;
-  return (left.name || left.node_id).localeCompare(right.name || right.node_id);
-}));
-const readyNodes = computed(() => nodes.value.filter((node) => node.configuration === "ready"));
-const partialNodes = computed(() => nodes.value.filter((node) => node.configuration === "partial"));
-const onlineReady = computed(() => nodes.value.filter((node) => node.configuration === "ready" && node.online && !node.disabled));
-const endpointCount = computed(() => nodes.value.filter((node) => !!node.endpoint).length);
+const readiness = computed(() => summarizeReadiness(nodes.value));
+// One definition of "ready" for the strip, the peer grid, the peer count and
+// the rendered preview. The server's `configuration` field is the same rule and
+// is still what the table column reports.
+const readyNodes = computed(() => meshReadyNodes(nodes.value));
 const previewNode = computed(() => nodes.value.find((node) => node.node_id === selectedNodeID.value) ?? readyNodes.value[0]);
 const preview = computed(() => previewConfig(previewNode.value, readyNodes.value));
+const peerCount = computed(() => Math.max(0, readyNodes.value.length - 1));
+
+// ── fleet table ordering ─────────────────────────────────────────────────
+const sortKey = ref<NodeSortKey>("status");
+const sortDirection = ref<SortDirection>("asc");
+const sortedNodes = computed(() => sortNodes(nodes.value, sortKey.value, sortDirection.value));
+
+const NODE_COLUMNS: Array<{ key: NodeSortKey | ""; label: string }> = [
+  { key: "node", label: "Node" },
+  { key: "address", label: "Address" },
+  { key: "", label: "Public key" },
+  { key: "endpoint", label: "Endpoint" },
+  { key: "configuration", label: "Configuration" },
+  { key: "status", label: "Status" },
+];
+
+function toggleSort(key: NodeSortKey): void {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+    return;
+  }
+  sortKey.value = key;
+  sortDirection.value = "asc";
+}
+
+function ariaSort(key: NodeSortKey | ""): "ascending" | "descending" | "none" {
+  if (!key || sortKey.value !== key) return "none";
+  return sortDirection.value === "asc" ? "ascending" : "descending";
+}
+
+function sortMark(key: NodeSortKey | ""): string {
+  if (!key || sortKey.value !== key) return "↕";
+  return sortDirection.value === "asc" ? "↑" : "↓";
+}
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   if (!bridge || !canCall(init.value, SERVICE, method)) throw new Error(`Method ${method} is not available for this session`);
@@ -116,14 +155,31 @@ async function createPlan(): Promise<void> {
 }
 
 const copied = ref(false);
+const copyFailed = ref(false);
+const previewBlock = ref<HTMLElement>();
+
 async function copyPreview(value: string): Promise<void> {
+  copyFailed.value = false;
   try {
     await navigator.clipboard.writeText(value);
     copied.value = true;
-    setTimeout(() => { copied.value = false; }, 1400);
+    window.setTimeout(() => { copied.value = false; }, 1400);
   } catch {
-    error.value = "Clipboard access is unavailable in this sandbox";
+    // The sandbox can withhold clipboard-write. Selecting the block leaves the
+    // operator one keystroke from the same result instead of a dead end.
+    copyFailed.value = true;
+    selectPreview();
   }
+}
+
+function selectPreview(): void {
+  const block = previewBlock.value;
+  if (!block) return;
+  const range = document.createRange();
+  range.selectNodeContents(block);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
 }
 
 function formatDate(value?: string): string {
@@ -134,50 +190,308 @@ function formatDate(value?: string): string {
 }
 
 async function resize(): Promise<void> { await nextTick(); bridge?.resize(document.documentElement.scrollHeight); }
+
+// ── overlays ─────────────────────────────────────────────────────────────
+// The frame is not a viewport: the host sizes it to this document, so a fixed,
+// "centred" sheet lands wherever the middle of the frame happens to be rather
+// than in front of the operator. See src/overlayAnchor.ts.
+const overlayAnchorTop = ref(MIN_ANCHOR_TOP);
+const overlayStyle = computed(() => ({ "--overlay-anchor-top": `${overlayAnchorTop.value}px` }));
+const overlayOpen = computed(() => !!planNode.value || !!approval.value);
+
+function recordAnchor(event: Event): void {
+  if (overlayOpen.value || isInsideOverlay(event.target)) return;
+  overlayAnchorTop.value = anchorTopFrom(event);
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || !overlayOpen.value) return;
+  if (approval.value) approval.value = undefined;
+  else planNode.value = undefined;
+}
+
+watch(overlayOpen, async (open) => {
+  if (!open) return;
+  await nextTick();
+  const panel = document.querySelector<HTMLElement>(".overlay-scrim .modal");
+  if (!panel) return;
+  overlayAnchorTop.value = clampAnchorTop(overlayAnchorTop.value, panel.offsetHeight, document.documentElement.scrollHeight);
+  panel.focus();
+  await resize();
+});
+
 let observer: ResizeObserver | undefined;
 let poller: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   observer = new ResizeObserver(() => { void resize(); });
   observer.observe(document.body);
-  poller = setInterval(() => { if (!loading.value && !planNode.value && !approval.value) void refresh(true); }, 20_000);
+  poller = setInterval(() => { if (!loading.value && !overlayOpen.value) void refresh(true); }, 20_000);
+  document.addEventListener("pointerdown", recordAnchor, true);
+  window.addEventListener("keydown", onKeydown);
   void resize();
 });
-onBeforeUnmount(() => { observer?.disconnect(); if (poller) clearInterval(poller); bridge?.dispose(); });
+onBeforeUnmount(() => {
+  observer?.disconnect();
+  if (poller) clearInterval(poller);
+  document.removeEventListener("pointerdown", recordAnchor, true);
+  window.removeEventListener("keydown", onKeydown);
+  bridge?.dispose();
+});
 </script>
 
 <template>
   <main class="workspace">
     <header class="page-header">
-      <div class="title-mark"><Spline :size="19" /></div>
-      <div class="title-copy"><div class="title-line"><h1>WireGuard Networks</h1><span class="plugin-label">WireGuard plugin</span></div><p>Secret-free mesh topology, node readiness and approval-bound configuration plans.</p></div>
-      <button class="button secondary" type="button" :disabled="loading || refreshing" @click="refresh(true)"><LoaderCircle v-if="refreshing" class="spin" :size="15" /><RefreshCw v-else :size="15" />Refresh</button>
+      <div class="title-mark"><Spline :size="19" aria-hidden="true" /></div>
+      <div class="title-copy">
+        <div class="title-line"><h1>WireGuard Networks</h1><span class="plugin-label">WireGuard plugin</span></div>
+        <p>Secret-free mesh topology, node readiness and approval-bound configuration plans.</p>
+      </div>
+      <button class="button secondary" type="button" :disabled="loading || refreshing" @click="refresh(true)">
+        <LoaderCircle v-if="refreshing" class="spin" :size="15" aria-hidden="true" />
+        <RefreshCw v-else :size="15" aria-hidden="true" />
+        Refresh
+      </button>
     </header>
 
-    <div v-if="bootError || error" class="alert" role="alert"><CircleAlert :size="17" /><span>{{ bootError || error }}</span><button class="icon-button" type="button" aria-label="Dismiss error" @click="error = ''; bootError = ''"><X :size="15" /></button></div>
-    <div v-if="notice" class="alert success" aria-live="polite"><CheckCircle2 :size="17" /><span>{{ notice }}</span><button class="icon-button" type="button" aria-label="Dismiss notice" @click="notice = ''"><X :size="15" /></button></div>
+    <div v-if="bootError || error" class="alert" role="alert">
+      <CircleAlert :size="17" aria-hidden="true" />
+      <span><strong>{{ bootError ? 'The plugin host is unavailable' : 'WireGuard state could not be loaded' }}</strong>{{ bootError || error }}</span>
+      <button v-if="!bootError" class="button secondary compact" type="button" :disabled="refreshing" @click="refresh(true)">
+        <LoaderCircle v-if="refreshing" class="spin" :size="13" aria-hidden="true" /> Try again
+      </button>
+      <button class="icon-button" type="button" aria-label="Dismiss error" title="Dismiss error" @click="error = ''; bootError = ''"><X :size="15" /></button>
+    </div>
+    <div v-if="notice" class="alert success" aria-live="polite">
+      <CheckCircle2 :size="17" aria-hidden="true" /><span>{{ notice }}</span>
+      <button class="icon-button" type="button" aria-label="Dismiss notice" title="Dismiss notice" @click="notice = ''"><X :size="15" /></button>
+    </div>
 
-    <section class="security-band"><ShieldCheck :size="19" /><div><strong>Private keys never leave their nodes</strong><p>Plans contain <code>{{ PRIVATE_KEY_PLACEHOLDER }}</code>. The agent substitutes its local key during an approved apply, under rollback watchdog and control-plane self-check.</p></div></section>
+    <section class="security-band">
+      <ShieldCheck :size="19" aria-hidden="true" />
+      <div>
+        <strong>Private keys never leave their nodes</strong>
+        <p>Plans contain <code>{{ PRIVATE_KEY_PLACEHOLDER }}</code>. The agent substitutes its local key during an approved apply, under rollback watchdog and control-plane self-check.</p>
+      </div>
+    </section>
 
-    <section class="summary-strip"><div><span>Ready nodes</span><strong>{{ readyNodes.length }} / {{ nodes.length }}</strong></div><div><span>Online mesh</span><strong>{{ onlineReady.length }}</strong></div><div><span>Public endpoints</span><strong>{{ endpointCount }}</strong></div><div><span>Partial setup</span><strong>{{ partialNodes.length }}</strong></div></section>
+    <template v-if="loading">
+      <div class="skeleton-strip" aria-hidden="true">
+        <div v-for="cell in 4" :key="cell"><span class="skeleton-bar short" /><span class="skeleton-bar tall" /></div>
+      </div>
+      <div class="node-panel" role="status" aria-label="Loading WireGuard state">
+        <div class="skeleton-rows" aria-hidden="true">
+          <div v-for="row in 6" :key="row"><span class="skeleton-bar" /><span class="skeleton-bar short" /><span class="skeleton-bar short" /><span class="skeleton-bar short" /></div>
+        </div>
+      </div>
+    </template>
 
-    <div v-if="loading" class="loading-state"><LoaderCircle class="spin" :size="20" />Loading WireGuard state</div>
+    <div v-else-if="(bootError || error) && !nodes.length" class="empty-state">
+      <CircleAlert :size="26" aria-hidden="true" />
+      <strong>Nothing could be loaded</strong>
+      <p>The overview request did not come back, so this is not an empty fleet: it is an unanswered question. The message above is what the control plane said.</p>
+      <div v-if="!bootError" class="empty-actions"><button class="button secondary" type="button" :disabled="refreshing" @click="refresh(true)"><RefreshCw :size="15" aria-hidden="true" /> Try again</button></div>
+    </div>
+
     <template v-else>
+      <section class="summary-strip" aria-label="Mesh summary">
+        <div :data-tone="readiness.total && !readiness.ready ? 'warning' : undefined">
+          <span>Ready nodes</span><strong>{{ readiness.ready }} / {{ readiness.total }}</strong>
+          <small>{{ readiness.total - readiness.ready }} still missing an address or a key</small>
+        </div>
+        <div><span>Online mesh</span><strong>{{ readiness.onlineReady }}</strong><small>Ready, reachable, not disabled</small></div>
+        <div><span>Public endpoints</span><strong>{{ readiness.endpoints }}</strong><small>Reachable from outside the mesh</small></div>
+        <div><span>Partial setup</span><strong>{{ readiness.needsKey + readiness.needsAddress }}</strong><small>One half of the pair reported</small></div>
+      </section>
+
       <section class="topology-panel">
-        <header><div><h2>Full-mesh readiness</h2><p>Each ready peer receives every other ready peer as a host route.</p></div><Network :size="18" /></header>
-        <div v-if="readyNodes.length" class="mesh"><div class="mesh-core"><Spline :size="23" /><strong>{{ readyNodes.length }} peers</strong><span>10.66 mesh</span></div><button v-for="node in readyNodes" :key="node.node_id" type="button" class="peer" :class="{ selected: previewNode?.node_id === node.node_id }" @click="selectedNodeID = node.node_id"><span class="online-dot" :data-online="node.online && !node.disabled" /><strong>{{ node.name || node.node_id }}</strong><small>{{ hostRoute(node.address) }}</small></button></div>
-        <div v-else class="empty-state"><Spline :size="28" /><strong>No mesh-ready nodes</strong><span>A node needs both a WireGuard address and public key.</span></div>
+        <header>
+          <div><h2>Full-mesh readiness</h2><p>Each ready peer receives every other ready peer as a host route.</p></div>
+          <Network :size="18" aria-hidden="true" />
+        </header>
+        <div v-if="readyNodes.length" class="mesh">
+          <div class="mesh-core">
+            <Spline :size="23" aria-hidden="true" />
+            <strong>{{ readyNodes.length }} peers</strong>
+            <span>{{ peerCount }} peer blocks each</span>
+          </div>
+          <button
+            v-for="node in readyNodes"
+            :key="node.node_id"
+            type="button"
+            class="peer"
+            :aria-pressed="previewNode?.node_id === node.node_id"
+            :title="`${node.name || node.node_id} · ${hostRoute(node.address)}`"
+            @click="selectedNodeID = node.node_id"
+          >
+            <span class="online-dot" :data-online="node.online && !node.disabled" />
+            <strong>{{ node.name || node.node_id }}</strong>
+            <small>{{ hostRoute(node.address) }}</small>
+          </button>
+        </div>
+
+        <!-- The live state on this fleet. A zero here is not an error, it is a
+             fleet whose agents have not reported the two fields a mesh needs,
+             so the panel counts which field is missing where. -->
+        <div v-else class="empty-state">
+          <Spline :size="26" aria-hidden="true" />
+          <strong>No node is mesh-ready</strong>
+          <p v-if="!readiness.total">No node reports WireGuard metadata at all. Nodes appear here once their agent has checked in.</p>
+          <template v-else>
+            <p>A node becomes mesh-ready when the control plane holds both a WireGuard address and the public key its agent reported. Both arrive from the node's own agent report, so a node stays out of the mesh until it has a WireGuard interface configured on the host.</p>
+            <ul class="readiness-breakdown">
+              <li><strong>{{ readiness.needsBoth }}</strong> report neither</li>
+              <li><strong>{{ readiness.needsKey }}</strong> have an address, no key</li>
+              <li><strong>{{ readiness.needsAddress }}</strong> have a key, no address</li>
+              <li v-if="readiness.disabled"><strong>{{ readiness.disabled }}</strong> disabled</li>
+            </ul>
+            <p class="field-help">The fleet table below lists every node and what it is missing.</p>
+          </template>
+        </div>
       </section>
 
       <section v-if="previewNode" class="config-layout">
-        <article class="interface-panel"><header><div><h2>Selected interface</h2><p>{{ previewNode.name || previewNode.node_id }}</p></div><span class="status" :data-tone="previewNode.online ? 'healthy' : 'warning'">{{ previewNode.online ? 'online' : 'offline' }}</span></header><dl><div><dt>Address</dt><dd>{{ hostRoute(previewNode.address) }}</dd></div><div><dt>Listen port</dt><dd>{{ previewNode.listen_port || 51820 }}</dd></div><div><dt>Public key</dt><dd>{{ redactedKey(previewNode.public_key) }}</dd></div><div><dt>Endpoint</dt><dd>{{ previewNode.endpoint || 'not reported' }}</dd></div><div><dt>Key source</dt><dd>node-local file</dd></div></dl></article>
-        <article class="preview-panel"><header><div><h2>Secret-free config preview</h2><p>{{ Math.max(0, readyNodes.length - 1) }} peer blocks / host-route AllowedIPs</p></div><button class="icon-button bordered" type="button" :aria-label="copied ? 'Copied' : 'Copy preview'" :title="copied ? 'Copied' : 'Copy preview'" @click="copyPreview(preview)"><CheckCircle2 v-if="copied" :size="15" /><Copy v-else :size="15" /></button></header><pre>{{ preview }}</pre></article>
+        <article class="interface-panel">
+          <header>
+            <div><h2>Selected interface</h2><p>{{ previewNode.name || previewNode.node_id }}</p></div>
+            <span class="status" :data-tone="previewNode.online && !previewNode.disabled ? 'healthy' : 'warning'">{{ previewNode.disabled ? 'disabled' : previewNode.online ? 'online' : 'offline' }}</span>
+          </header>
+          <dl>
+            <div><dt>Address</dt><dd :title="hostRoute(previewNode.address)">{{ hostRoute(previewNode.address) || 'not reported' }}</dd></div>
+            <div><dt>Listen port</dt><dd>{{ previewNode.listen_port || 51820 }}</dd></div>
+            <div><dt>Public key</dt><dd :title="redactedKey(previewNode.public_key)">{{ redactedKey(previewNode.public_key) }}</dd></div>
+            <div><dt>Endpoint</dt><dd :title="previewNode.endpoint || 'not reported'">{{ previewNode.endpoint || 'not reported' }}</dd></div>
+            <div><dt>Last seen</dt><dd :title="formatDate(previewNode.last_seen)">{{ formatDate(previewNode.last_seen) }}</dd></div>
+            <div><dt>Key source</dt><dd>node-local file</dd></div>
+            <div v-if="readinessGap(previewNode) !== 'ready'"><dt>Mesh readiness</dt><dd :title="readinessGapLabel(readinessGap(previewNode))">{{ readinessGapLabel(readinessGap(previewNode)) }}</dd></div>
+          </dl>
+        </article>
+        <article class="preview-panel">
+          <header>
+            <div><h2>Secret-free config preview</h2><p>{{ peerCount }} peer blocks, host-route AllowedIPs</p></div>
+            <button class="icon-button bordered" type="button" :disabled="!preview" :aria-label="copied ? 'Copied' : 'Copy preview'" :title="copied ? 'Copied' : 'Copy preview'" @click="copyPreview(preview)">
+              <CheckCircle2 v-if="copied" :size="15" />
+              <Copy v-else :size="15" />
+            </button>
+          </header>
+          <p v-if="copyFailed" class="approval-banner" role="status">
+            <CircleAlert :size="15" aria-hidden="true" />
+            <span>The sandbox refused clipboard access. The preview is selected: copy it with the keyboard.</span>
+          </p>
+          <!-- An empty <pre> reads as a bug. There is a reason no config can be
+               rendered, and it is the same reason the node is not in the mesh. -->
+          <div v-if="!preview" class="empty-state">
+            <FileCode2 :size="24" aria-hidden="true" />
+            <strong>No configuration to render</strong>
+            <p>{{ previewNode.name || previewNode.node_id }} has no WireGuard address, so there is no interface to write. {{ readinessGapLabel(readinessGap(previewNode)) }}.</p>
+          </div>
+          <pre v-else ref="previewBlock">{{ preview }}</pre>
+        </article>
       </section>
 
-      <section class="node-panel"><header><div><h2>Fleet nodes</h2><p>Readiness reflects the control-plane fields available for mesh compilation.</p></div></header><div class="table-wrap"><table><thead><tr><th>Node</th><th>Address</th><th>Public key</th><th>Endpoint</th><th>Configuration</th><th>Status</th><th class="actions">Actions</th></tr></thead><tbody><tr v-for="node in sortedNodes" :key="node.node_id"><td><strong>{{ node.name || node.node_id }}</strong><small>{{ node.node_id }}</small></td><td class="mono">{{ hostRoute(node.address) || '-' }}</td><td class="mono">{{ redactedKey(node.public_key) }}</td><td class="mono">{{ node.endpoint || '-' }}</td><td><span class="status" :data-tone="node.configuration === 'ready' ? 'healthy' : node.configuration === 'partial' ? 'warning' : 'neutral'">{{ node.configuration }}</span></td><td><span class="status" :data-tone="node.online && !node.disabled ? 'healthy' : 'warning'">{{ node.disabled ? 'disabled' : node.online ? 'online' : 'offline' }}</span><small>{{ formatDate(node.last_seen) }}</small></td><td class="actions"><button v-if="canPlan" class="button secondary compact" type="button" :disabled="node.configuration !== 'ready'" :title="node.configuration !== 'ready' ? 'Address and public key are required' : 'Create configuration plan'" @click="openPlan(node)"><FileCode2 :size="14" />Plan</button></td></tr></tbody></table></div><div v-if="!nodes.length" class="empty-state"><Network :size="28" /><strong>No visible nodes</strong><span>WireGuard metadata appears after agents report their node state.</span></div></section>
+      <section class="node-panel">
+        <header>
+          <div><h2>Fleet nodes</h2><p>Readiness reflects the control-plane fields available for mesh compilation.</p></div>
+          <span class="status" data-tone="neutral">{{ readiness.total }} nodes</span>
+        </header>
+        <div v-if="nodes.length" class="table-wrap">
+          <table>
+            <thead><tr>
+              <th v-for="column in NODE_COLUMNS" :key="column.label" :aria-sort="ariaSort(column.key)">
+                <button v-if="column.key" class="sort-button" type="button" @click="toggleSort(column.key as NodeSortKey)">
+                  {{ column.label }}<span class="sort-mark" aria-hidden="true">{{ sortMark(column.key) }}</span>
+                </button>
+                <template v-else>{{ column.label }}</template>
+              </th>
+              <th class="actions">Actions</th>
+            </tr></thead>
+            <tbody>
+              <tr v-for="node in sortedNodes" :key="node.node_id">
+                <td><strong :title="node.name || node.node_id">{{ node.name || node.node_id }}</strong><small :title="node.node_id">{{ node.node_id }}</small></td>
+                <td class="mono" :title="hostRoute(node.address) || 'not reported'">{{ hostRoute(node.address) || '-' }}</td>
+                <td class="mono" :title="node.public_key ? 'Public key, shown truncated' : 'The agent has not reported a public key'">{{ redactedKey(node.public_key) }}</td>
+                <td class="mono" :title="node.endpoint || 'not reported'">{{ node.endpoint || '-' }}</td>
+                <td>
+                  <span class="status" :data-tone="node.configuration === 'ready' ? 'healthy' : node.configuration === 'partial' ? 'warning' : 'neutral'">{{ node.configuration }}</span>
+                  <small v-if="readinessGap(node) !== 'ready'">{{ readinessGapLabel(readinessGap(node)) }}</small>
+                </td>
+                <td>
+                  <span class="status" :data-tone="node.online && !node.disabled ? 'healthy' : 'warning'">{{ node.disabled ? 'disabled' : node.online ? 'online' : 'offline' }}</span>
+                  <small :title="formatDate(node.last_seen)">{{ formatDate(node.last_seen) }}</small>
+                </td>
+                <td class="actions">
+                  <button
+                    v-if="canPlan"
+                    class="button secondary compact"
+                    type="button"
+                    :disabled="readinessGap(node) !== 'ready'"
+                    :title="readinessGap(node) !== 'ready' ? readinessGapLabel(readinessGap(node)) : 'Create configuration plan'"
+                    @click="openPlan(node)"
+                  >
+                    <FileCode2 :size="14" aria-hidden="true" />Plan
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="empty-state">
+          <Network :size="26" aria-hidden="true" />
+          <strong>No visible nodes</strong>
+          <p>WireGuard metadata appears after agents report their node state. If the fleet has nodes and none is listed here, this session may not be allowed to read them.</p>
+        </div>
+      </section>
     </template>
 
-    <div v-if="planNode" class="modal-backdrop" @mousedown.self="planNode = undefined"><section class="modal" role="dialog" aria-modal="true"><header><div><h2>Create mesh configuration plan</h2><p>{{ planNode.name || planNode.node_id }}</p></div><button class="icon-button" type="button" aria-label="Close" @click="planNode = undefined"><X :size="17" /></button></header><div class="plan-body"><label><span>Listen port</span><input v-model="listenPort" type="number" min="1" max="65535" /></label><div class="plan-facts"><div><Route :size="16" /><span><strong>{{ Math.max(0, readyNodes.length - 1) }} peers</strong><small>Each allowed as /32 or /128</small></span></div><div><KeyRound :size="16" /><span><strong>Private key placeholder</strong><small>Substituted only on the target node</small></span></div><div><ShieldCheck :size="16" /><span><strong>Pending approval</strong><small>No direct apply from this plugin page</small></span></div></div></div><footer><button class="button secondary" type="button" @click="planNode = undefined">Cancel</button><button class="button primary" type="button" :disabled="planning" @click="createPlan"><LoaderCircle v-if="planning" class="spin" :size="15" /><FileCode2 v-else :size="15" />Generate plan</button></footer></section></div>
+    <div v-if="planNode" class="overlay-scrim" :style="overlayStyle" @mousedown.self="planNode = undefined">
+      <section tabindex="-1" class="modal" role="dialog" aria-modal="true" aria-labelledby="plan-title">
+        <header>
+          <div><h2 id="plan-title">Create mesh configuration plan</h2><p>{{ planNode.name || planNode.node_id }}</p></div>
+          <button class="icon-button" type="button" aria-label="Close" @click="planNode = undefined"><X :size="17" /></button>
+        </header>
+        <div class="plan-body">
+          <label>
+            <span>Listen port</span>
+            <input v-model="listenPort" type="number" min="1" max="65535" />
+            <small class="field-help">The port this node listens on. Peers reach it at its endpoint, not at this port directly.</small>
+          </label>
+          <div class="plan-facts">
+            <div><Route :size="16" aria-hidden="true" /><span><strong>{{ peerCount }} peers</strong><small>Each allowed as /32 or /128</small></span></div>
+            <div><KeyRound :size="16" aria-hidden="true" /><span><strong>Private key placeholder</strong><small>Substituted only on the target node</small></span></div>
+            <div><ShieldCheck :size="16" aria-hidden="true" /><span><strong>Pending approval</strong><small>No direct apply from this plugin page</small></span></div>
+          </div>
+          <div v-if="peerCount">
+            <p class="field-help">Peers this plan writes into the interface:</p>
+            <ul class="plan-peers" aria-label="Peers included in this plan">
+              <li v-for="peer in readyNodes.filter((value) => value.node_id !== planNode!.node_id)" :key="peer.node_id">
+                {{ peer.name || peer.node_id }} · {{ hostRoute(peer.address) }}
+              </li>
+            </ul>
+          </div>
+        </div>
+        <footer>
+          <button class="button secondary" type="button" @click="planNode = undefined">Cancel</button>
+          <button class="button primary" type="button" :disabled="planning" @click="createPlan">
+            <LoaderCircle v-if="planning" class="spin" :size="15" aria-hidden="true" />
+            <FileCode2 v-else :size="15" aria-hidden="true" />Generate plan
+          </button>
+        </footer>
+      </section>
+    </div>
 
-    <div v-if="approval" class="modal-backdrop" @mousedown.self="approval = undefined"><section class="modal wide plan-review" role="dialog" aria-modal="true"><header><div><h2>Plan ready for approval</h2><p>{{ approval.id }} / {{ approval.status }} / {{ approval.node_id }}</p></div><button class="icon-button" type="button" aria-label="Close" @click="approval = undefined"><X :size="17" /></button></header><div class="approval-banner"><ShieldCheck :size="17" /><span>This plan contains public peer keys and a private-key placeholder. It has not been applied.</span></div><pre>{{ approval.plan }}</pre><footer><button class="button primary" type="button" @click="approval = undefined">Done</button></footer></section></div>
+    <div v-if="approval" class="overlay-scrim" :style="overlayStyle" @mousedown.self="approval = undefined">
+      <section tabindex="-1" class="modal wide plan-review" role="dialog" aria-modal="true" aria-labelledby="approval-title">
+        <header>
+          <div><h2 id="approval-title">Plan ready for approval</h2><p>{{ approval.id }} / {{ approval.status }} / {{ approval.node_id }}</p></div>
+          <button class="icon-button" type="button" aria-label="Close" @click="approval = undefined"><X :size="17" /></button>
+        </header>
+        <p class="approval-banner">
+          <ShieldCheck :size="17" aria-hidden="true" />
+          <span>This plan contains public peer keys and a private-key placeholder. It has not been applied. Approve it in Operations, then Approvals.</span>
+        </p>
+        <pre>{{ approval.plan }}</pre>
+        <footer><button class="button primary" type="button" @click="approval = undefined">Done</button></footer>
+      </section>
+    </div>
   </main>
 </template>
