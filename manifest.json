@@ -9,7 +9,7 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0-alpha.13",
+  "version": "0.1.0-alpha.14",
   "publisher": "latticenet",
   "signature_ed25519": "gYA0BNlooQJkBDtJL6hhuMLazy8iE3og+ws5ubqQPg9d2hu8tAL3VMY5FzLPpSDpodhwNxJzhL7tj3DyWhtxAw==",
   "bundle": {
