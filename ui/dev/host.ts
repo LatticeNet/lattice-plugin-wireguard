@@ -2,11 +2,18 @@
  * A stand-in for the dashboard host, for looking at the plugin in a browser.
  *
  * This is deliberately not a mock of the UI: it runs the real plugin build in a
- * real iframe and speaks the real bridge protocol at it, including the one
- * thing that breaks overlays in production. The host sizes the frame to the
- * height the plugin reports, so the frame is taller than the window and the
- * frame is NOT a viewport. Reproducing that here is the whole point: an overlay
- * that looks centred in a standalone page lands below the fold in the console.
+ * real iframe and speaks the real bridge protocol at it. The frame is sized
+ * the way the console sizes it, to fill the main region, so the frame IS a
+ * viewport: the plugin's document scrolls inside it, its sticky table header
+ * pins to the top of what is visible, and an overlay centres on what the
+ * operator can see. The height the plugin reports is shown in the bar and
+ * otherwise ignored, which is what the console does too.
+ *
+ * Tokens: the console publishes 42 custom properties on init and on every
+ * theme change. The chassis stylesheet declares the same 42 names as fallbacks
+ * with the console's own values for both schemes, so the harness sends the
+ * scheme and an empty token map and renders what the console renders. A host
+ * with a different palette would overwrite the fallbacks inline on <html>.
  */
 
 import { handlers, type Scenario } from "./fixtures";
@@ -21,26 +28,15 @@ const INTERFACES = [
   { service: "latticenet.wireguard/networks", methods: ["overview", "plan"] },
 ];
 
-const DARK: Record<string, string> = {
-  "--background": "#0d1117", "--foreground": "#e9eef5", "--card": "#161c26",
-  "--border": "#242d3a", "--muted": "#1a212c", "--muted-foreground": "#8b96a5",
-  "--primary": "#4f9de0", "--primary-foreground": "#06121f",
-  "--destructive": "#f2777a", "--ring": "#4f9de0",
-};
-const LIGHT: Record<string, string> = {
-  "--background": "#f7f8f9", "--foreground": "#17191c", "--card": "#ffffff",
-  "--border": "#d9dde2", "--muted": "#f1f3f5", "--muted-foreground": "#656d76",
-  "--primary": "#1769aa", "--primary-foreground": "#ffffff",
-  "--destructive": "#c43838", "--ring": "#1769aa",
-};
-
 const params = new URLSearchParams(location.search);
 let route = (params.get("route") ?? "networks") as Route;
 let scenario = (params.get("scenario") ?? "production") as Scenario;
 let dark = params.get("theme") !== "light";
 let width = params.get("width") ?? "1440";
-/** Deliberately short, so the frame is taller than the window like production. */
-let windowHeight = Number(params.get("frame") ?? 760);
+/** The console's main region height: the frame fills it and scrolls inside. */
+let windowHeight = Number(params.get("frame") ?? 900);
+/** Anything after `#` on the plugin URL besides the handshake, e.g. `lens=mesh&expand=node-x`. */
+const pluginQuery = params.get("q") ?? "";
 
 const shell = document.createElement("div");
 shell.className = "harness";
@@ -63,22 +59,20 @@ const wrap = document.getElementById("wrap") as HTMLDivElement;
 const viewport = document.getElementById("viewport") as HTMLDivElement;
 const reported = document.getElementById("reported") as HTMLSpanElement;
 
-function tokens(): Record<string, string> {
-  return dark ? DARK : LIGHT;
-}
-
 function applyChrome(): void {
   wrap.style.width = `${width}px`;
   viewport.style.height = `${windowHeight}px`;
+  frame.style.height = `${windowHeight}px`;
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   (document.getElementById("theme") as HTMLButtonElement).textContent = dark ? "light" : "dark";
 }
 
 function reload(): void {
   const query = new URLSearchParams({ route, scenario, theme: dark ? "dark" : "light", width, frame: String(windowHeight) });
+  if (pluginQuery) query.set("q", pluginQuery);
   history.replaceState(null, "", `?${query}`);
   applyChrome();
-  frame.src = `/index.html#lattice_nonce=${NONCE}&host_origin=${encodeURIComponent(location.origin)}`;
+  frame.src = `/index.html${pluginQuery ? `?${pluginQuery}` : ""}#lattice_nonce=${NONCE}&host_origin=${encodeURIComponent(location.origin)}`;
 }
 
 function post(message: Record<string, unknown>): void {
@@ -94,15 +88,12 @@ window.addEventListener("message", (event) => {
       post({
         type: "lattice.host.init", version: "1", pluginId: PLUGIN_ID,
         pluginVersion: "0.0.0-dev", pluginRoute: route, locale: "en",
-        colorScheme: dark ? "dark" : "light", designTokens: tokens(), interfaces: INTERFACES,
+        colorScheme: dark ? "dark" : "light", designTokens: {}, interfaces: INTERFACES,
       });
       return;
     case "lattice.plugin.resize": {
       const height = Math.max(120, Number(data.height) || 0);
-      // The host trusts the plugin's own height. That is exactly why `vh` and
-      // `position: fixed` are wrong inside the frame.
-      frame.style.height = `${height}px`;
-      reported.textContent = `frame ${height}px in a ${windowHeight}px window`;
+      reported.textContent = `plugin reports ${height}px; frame held at ${windowHeight}px`;
       return;
     }
     case "lattice.plugin.call": {
@@ -144,7 +135,7 @@ document.getElementById("width")!.addEventListener("change", (event) => {
 document.getElementById("theme")!.addEventListener("click", () => {
   dark = !dark;
   applyChrome();
-  post({ type: "lattice.host.theme", colorScheme: dark ? "dark" : "light", designTokens: tokens() });
+  post({ type: "lattice.host.theme", colorScheme: dark ? "dark" : "light", designTokens: {} });
 });
 
 reload();
