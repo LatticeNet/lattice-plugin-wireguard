@@ -74,10 +74,16 @@ function applyChrome(): void {
   (document.getElementById("theme") as HTMLButtonElement).textContent = dark ? "light" : "dark";
 }
 
-function reload(): void {
+/** The address bar carries every control, so a reload or a pasted URL reproduces the same state. */
+function syncQuery(): void {
   const query = new URLSearchParams({ route, scenario, theme: dark ? "dark" : "light", width, frame: String(windowHeight) });
+  if (refuse) query.set("refuse", "1");
   if (pluginQuery) query.set("q", pluginQuery);
   history.replaceState(null, "", `?${query}`);
+}
+
+function reload(): void {
+  syncQuery();
   applyChrome();
   frame.src = `/index.html${pluginQuery ? `?${pluginQuery}` : ""}#lattice_nonce=${NONCE}&host_origin=${encodeURIComponent(location.origin)}`;
 }
@@ -144,6 +150,7 @@ document.getElementById("width")!.addEventListener("change", (event) => {
 });
 document.getElementById("refuse")!.addEventListener("change", (event) => {
   refuse = (event.target as HTMLInputElement).checked;
+  syncQuery();
 });
 document.getElementById("theme")!.addEventListener("click", () => {
   dark = !dark;
