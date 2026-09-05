@@ -65,9 +65,19 @@ npm run verify:build
 ```
 
 To drive the UI in a browser, `ui/dev.html` runs the real build inside a real
-iframe and speaks the real bridge protocol at it, including the host sizing the
-frame to the reported height. There is no `dev` script in `ui/package.json`, so
-start it with `npx vite --open /dev.html` from `ui`.
+iframe and speaks the real bridge protocol at it, with the frame sized to fill
+the console's main region the way the dashboard sizes it. There is no `dev`
+script in `ui/package.json`, so start it with `npx vite --open /dev.html` from
+`ui`. The bar switches data (`production`, `rich`, `empty`, `failing`), width
+(1440, 2423, 375) and theme; `?q=lens=mesh&expand=node-hkg-edge-01` in the
+harness URL passes a document query to the plugin.
+
+The page is built on the shared plugin chassis, `@latticenet/plugin-bridge/chassis`
+(see `docs/design-plugin-chassis.md` in the `lattice` repo). Until the bridge
+release that carries the chassis is published to the registry, `ui/package.json`
+points at `ui/vendor/latticenet-plugin-bridge-0.1.0-alpha.2.tgz`, an `npm pack`
+of the bridge's `feat/plugin-chassis` branch; swap the dependency back to the
+registry version once it is published and delete the tarball.
 
 Build and sign with Go `1.26.4`, Node `22`, the deterministic plugin packer, and
 the trusted LatticeNet Ed25519 publisher seed. Never commit the seed.
