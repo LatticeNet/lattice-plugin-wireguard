@@ -40,6 +40,7 @@ import {
   type StateTone,
 } from "@latticenet/plugin-bridge/chassis";
 
+import { useFleetRead } from "./fleetRead";
 import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, lensFrom, meshTileTitle, pageCount, pageOf, pageSlice, peerSubline, proofSegments, type Lens } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
 import {
@@ -65,14 +66,15 @@ const SERVICE = "latticenet.wireguard/networks";
 const HANDSHAKE_FALLBACK =
   "The Lattice console did not hand this page a session, so there is no WireGuard state to read.";
 const init = ref<HostInit>();
-const nodes = ref<WireGuardNode[]>([]);
-const loading = ref(true);
-const refreshing = ref(false);
-const error = ref("");
 const notice = ref("");
 const bootError = ref("");
-/** When the newest successful overview read landed. Absent until one has. */
-const observedAt = ref<Date>();
+// The rows, when they landed, and the newest failure. A failed read never
+// replaces a good list, and a retry keeps the failure it is retrying until the
+// read settles, so the empty fleet is reachable only through a read that
+// landed empty.
+const { nodes, observedAt, error, loading, refreshing, refresh: readFleet } = useFleetRead(
+  async () => (await call<{ nodes: WireGuardNode[] }>("overview")).nodes ?? [],
+);
 
 let bridge: BridgeClient | undefined;
 try {
@@ -82,11 +84,9 @@ try {
     await refresh();
   }).catch((cause) => {
     bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
-    loading.value = false;
   });
 } catch (cause) {
   bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
-  loading.value = false;
 }
 
 const canPlan = computed(() => canCall(init.value, SERVICE, "plan"));
@@ -194,28 +194,14 @@ async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   return bridge.call<T>(SERVICE, method, payload).promise;
 }
 
-async function refresh(background = false): Promise<void> {
+async function refresh(): Promise<void> {
   if (!init.value) return;
-  if (background) refreshing.value = true; else loading.value = true;
-  error.value = "";
   const firstRead = observedAt.value === undefined;
-  try {
-    const result = await call<{ nodes: WireGuardNode[] }>("overview");
-    nodes.value = result.nodes ?? [];
-    observedAt.value = new Date();
-    // A link that names a node (`?expand=`) lands on the page that holds it.
-    const [linked] = expanded.own.value;
-    if (firstRead && linked) page.value = pageOf(sortedNodes.value.findIndex((node) => node.node_id === linked));
-  } catch (cause) {
-    error.value = safeErrorMessage(
-      cause,
-      "The overview request did not come back, so anything listed below is from an earlier refresh.",
-    );
-  } finally {
-    loading.value = false;
-    refreshing.value = false;
-    await resize();
-  }
+  const landed = await readFleet();
+  // A link that names a node (`?expand=`) lands on the page that holds it.
+  const [linked] = expanded.own.value;
+  if (landed && firstRead && linked) page.value = pageOf(sortedNodes.value.findIndex((node) => node.node_id === linked));
+  await resize();
 }
 
 const planNode = ref<WireGuardNode>();
@@ -321,7 +307,7 @@ let poller: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   observer = new ResizeObserver(() => { void resize(); });
   observer.observe(document.body);
-  poller = setInterval(() => { if (!loading.value && overlayDepth() === 0) void refresh(true); }, 20_000);
+  poller = setInterval(() => { if (!loading.value && overlayDepth() === 0) void refresh(); }, 20_000);
   void resize();
 });
 onBeforeUnmount(() => {
@@ -340,7 +326,7 @@ onBeforeUnmount(() => {
       :icon="Spline"
     >
       <template #actions>
-        <PcButton :busy="refreshing" :disabled="loading || !init" @click="refresh(true)">
+        <PcButton :busy="refreshing" :disabled="loading || !init" @click="refresh()">
           <template #icon><RefreshCw :size="15" aria-hidden="true" /></template>
           Refresh
         </PcButton>
@@ -358,7 +344,7 @@ onBeforeUnmount(() => {
     >
       {{ bootError || error }}
       <template v-if="!bootError" #actions>
-        <PcButton compact :busy="refreshing" @click="refresh(true)">Try again</PcButton>
+        <PcButton compact :busy="refreshing" @click="refresh()">Try again</PcButton>
       </template>
     </PcNotice>
     <PcNotice v-if="notice" tone="success" dismissible dismiss-label="Dismiss notice" @dismiss="notice = ''">{{ notice }}</PcNotice>
@@ -377,6 +363,19 @@ onBeforeUnmount(() => {
       </PcEmptyState>
     </PcPanel>
 
+    <!-- A failed handshake, or a read that failed with nothing loaded. It
+         stands ahead of the skeleton so a failure is never hidden behind one,
+         and ahead of the fleet so a retry in flight never reads as an empty
+         fleet: the failure holds this block until a read lands. -->
+    <PcPanel v-else-if="bootError || (error && !nodes.length)">
+      <PcEmptyState kind="error" title="Nothing could be loaded">
+        <p>This is not an empty fleet, it is an unanswered question. The message above says what stopped it.</p>
+        <template v-if="!bootError" #actions>
+          <PcButton :busy="refreshing" @click="refresh()"><template #icon><RefreshCw :size="15" aria-hidden="true" /></template>Try again</PcButton>
+        </template>
+      </PcEmptyState>
+    </PcPanel>
+
     <template v-else-if="loading">
       <PcSkeleton variant="strip" :count="4" label="Loading mesh summary" />
       <PcPanel>
@@ -384,15 +383,7 @@ onBeforeUnmount(() => {
       </PcPanel>
     </template>
 
-    <PcPanel v-else-if="(bootError || error) && !nodes.length">
-      <PcEmptyState kind="error" title="Nothing could be loaded">
-        <p>This is not an empty fleet, it is an unanswered question. The message above says what stopped it.</p>
-        <template v-if="!bootError" #actions>
-          <PcButton :busy="refreshing" @click="refresh(true)"><template #icon><RefreshCw :size="15" aria-hidden="true" /></template>Try again</PcButton>
-        </template>
-      </PcEmptyState>
-    </PcPanel>
-
+    <!-- Only a read that landed reaches this block. -->
     <template v-else>
       <PcStatStrip :count="4" label="Mesh summary">
         <PcStatCard
@@ -542,6 +533,7 @@ onBeforeUnmount(() => {
           <template #actions><PcButton @click="search = ''">Clear the search</PcButton></template>
         </PcEmptyState>
 
+        <!-- A read that landed with no nodes; a failed read holds the error block above instead. -->
         <PcEmptyState v-else title="No visible nodes" :icon="Network">
           <p>WireGuard metadata appears after agents report their node state. If the fleet has nodes and none is listed here, this session may not be allowed to read them.</p>
         </PcEmptyState>

@@ -14,6 +14,11 @@
  * with the console's own values for both schemes, so the harness sends the
  * scheme and an empty token map and renders what the console renders. A host
  * with a different palette would overwrite the fallbacks inline on <html>.
+ *
+ * "refuse calls" turns every answer into a host error without reloading the
+ * frame, so a poll or a retry that fails after a good read can be watched with
+ * the rows still standing. The "failing" scenario is the other case: nothing
+ * ever lands, from the first read on.
  */
 
 import { handlers, type Scenario } from "./fixtures";
@@ -33,6 +38,7 @@ let route = (params.get("route") ?? "networks") as Route;
 let scenario = (params.get("scenario") ?? "production") as Scenario;
 let dark = params.get("theme") !== "light";
 let width = params.get("width") ?? "1440";
+let refuse = params.get("refuse") === "1";
 /** The console's main region height: the frame fills it and scrolls inside. */
 let windowHeight = Number(params.get("frame") ?? 900);
 /** Anything after `#` on the plugin URL besides the handshake, e.g. `lens=mesh&expand=node-x`. */
@@ -46,6 +52,7 @@ shell.innerHTML = `
     <label hidden>route <select id="route">${ROUTES.map((value) => `<option${value === route ? " selected" : ""}>${value}</option>`).join("")}</select></label>
     <label>data <select id="scenario">${["production", "rich", "empty", "failing"].map((value) => `<option${value === scenario ? " selected" : ""}>${value}</option>`).join("")}</select></label>
     <label>width <select id="width">${["1440", "2423", "375"].map((value) => `<option${value === width ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+    <label><input id="refuse" type="checkbox"${refuse ? " checked" : ""}> refuse calls</label>
     <button id="theme" type="button">${dark ? "light" : "dark"}</button>
     <span id="reported"></span>
   </div>
@@ -67,10 +74,16 @@ function applyChrome(): void {
   (document.getElementById("theme") as HTMLButtonElement).textContent = dark ? "light" : "dark";
 }
 
-function reload(): void {
+/** The address bar carries every control, so a reload or a pasted URL reproduces the same state. */
+function syncQuery(): void {
   const query = new URLSearchParams({ route, scenario, theme: dark ? "dark" : "light", width, frame: String(windowHeight) });
+  if (refuse) query.set("refuse", "1");
   if (pluginQuery) query.set("q", pluginQuery);
   history.replaceState(null, "", `?${query}`);
+}
+
+function reload(): void {
+  syncQuery();
   applyChrome();
   frame.src = `/index.html${pluginQuery ? `?${pluginQuery}` : ""}#lattice_nonce=${NONCE}&host_origin=${encodeURIComponent(location.origin)}`;
 }
@@ -100,9 +113,12 @@ window.addEventListener("message", (event) => {
       const table = handlers(scenario);
       const key = `${String(data.service).split("/").pop()}/${data.method}`;
       const handler = table[key];
+      // Decided when the call arrives: a call made while refusing is refused
+      // even if the box is unticked before the answer goes out.
+      const refused = scenario === "failing" || refuse;
       // Latency, so loading and skeleton states are visible rather than theoretical.
       window.setTimeout(() => {
-        if (scenario === "failing") {
+        if (refused) {
           post({ type: "lattice.host.error", id: data.id, message: `upstream refused ${key}: 503 service unavailable` });
           return;
         }
@@ -131,6 +147,10 @@ document.getElementById("scenario")!.addEventListener("change", (event) => {
 document.getElementById("width")!.addEventListener("change", (event) => {
   width = (event.target as HTMLSelectElement).value;
   reload();
+});
+document.getElementById("refuse")!.addEventListener("change", (event) => {
+  refuse = (event.target as HTMLInputElement).checked;
+  syncQuery();
 });
 document.getElementById("theme")!.addEventListener("click", () => {
   dark = !dark;
