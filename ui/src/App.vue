@@ -25,6 +25,7 @@ import {
   PcSkeleton,
   PcStatCard,
   PcStatStrip,
+  PcStateDot,
   PcStatePill,
   PcTable,
   PcTd,
@@ -39,7 +40,7 @@ import {
   type StateTone,
 } from "@latticenet/plugin-bridge/chassis";
 
-import { PAGE_SIZE, filterNodes, lensFrom, pageCount, pageOf, pageSlice, proofSegments, type Lens } from "./fleetView";
+import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, lensFrom, meshTileTitle, pageCount, pageOf, pageSlice, peerSubline, proofSegments, type Lens } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
 import {
   PRIVATE_KEY_PLACEHOLDER,
@@ -97,8 +98,10 @@ const readyNodes = computed(() => meshReadyNodes(nodes.value));
 const peerCount = computed(() => Math.max(0, readyNodes.value.length - 1));
 const proof = computed(() => proofSegments(readiness.value, observedAt.value));
 // A refresh that failed after a good read leaves the rows standing; the
-// notice then says the table is the last good read, not the current one.
-const stale = computed(() => !!error.value && nodes.value.length > 0);
+// notice then says the table is the last good read, not the current one, and
+// only that notice can be dismissed. With nothing loaded there is nothing
+// behind the notice to dismiss it into.
+const pageNotice = computed(() => fleetNotice({ bootError: bootError.value, error: error.value, loaded: nodes.value.length }));
 
 // ── lens, search, expansion and page: the document query carries them ────
 // `?lens=mesh` and `?expand=<node_id>` survive a reload and can be shared; the
@@ -175,13 +178,9 @@ function configTone(node: WireGuardNode): StateTone {
 
 /** The agent's state as the quiet dot at the name baseline; the evidence is the last report. */
 function agentStatus(node: WireGuardNode): NameStatus {
-  if (node.disabled) return { tone: "neutral", label: "disabled", title: `disabled; last seen ${formatDate(node.last_seen)}` };
-  if (node.online) return { tone: "healthy", label: "online", title: `last seen ${formatDate(node.last_seen)}` };
-  return { tone: "warning", label: "offline", title: `last seen ${formatDate(node.last_seen)}` };
-}
-
-function displayName(node: WireGuardNode): string {
-  return node.name || node.node_id;
+  const state = agentState(node);
+  const tone: StateTone = state === "disabled" ? "neutral" : state === "online" ? "healthy" : "warning";
+  return { tone, label: state, title: `${state}, last seen ${formatDate(node.last_seen)}` };
 }
 
 function planTitle(node: WireGuardNode): string {
@@ -350,12 +349,12 @@ onBeforeUnmount(() => {
     </PcPageHeader>
 
     <PcNotice
-      v-if="bootError || error"
-      :tone="stale ? 'warning' : 'danger'"
-      :title="bootError ? 'This page has no console session' : stale ? 'The fleet below is the last good read, not the current one' : 'The fleet could not be refreshed'"
-      dismissible
+      v-if="pageNotice"
+      :tone="pageNotice.tone"
+      :title="pageNotice.title"
+      :dismissible="pageNotice.dismissible"
       dismiss-label="Dismiss error"
-      @dismiss="error = ''; bootError = ''"
+      @dismiss="error = ''"
     >
       {{ bootError || error }}
       <template v-if="!bootError" #actions>
@@ -507,8 +506,12 @@ onBeforeUnmount(() => {
                     </section>
                   </div>
                 </PcDetailRow>
-                <PcRow v-for="peer in meshPeersFor(node, nodes)" :key="`${node.node_id}-${peer.node_id}`">
-                  <PcNameCell :name="displayName(peer)" :id="peer.node_id" :level="1" :status="agentStatus(peer)">
+                <!-- Peers are part of the open node's fold: they take the open
+                     surface with the row and its detail, so the block reads as
+                     one attached unit against the plain rows of other nodes,
+                     and each id line leads with the owner's name. -->
+                <PcRow v-for="peer in meshPeersFor(node, nodes)" :key="`${node.node_id}-${peer.node_id}`" class="peer-row">
+                  <PcNameCell :name="displayName(peer)" :sub="peerSubline(node, peer)" :level="1" :status="agentStatus(peer)">
                     <template #after><PcKindChip label="peer" :title="`A mesh peer of ${displayName(node)}`" /></template>
                   </PcNameCell>
                   <PcTd label="Address" mono :title="`${peer.address} pinned into AllowedIPs as ${hostRoute(peer.address)}`">{{ hostRoute(peer.address) }}</PcTd>
@@ -559,12 +562,12 @@ onBeforeUnmount(() => {
             :key="node.node_id"
             type="button"
             class="mesh-peer"
-            :title="`${displayName(node)}, reported ${node.address}. Open it in the fleet list.`"
+            :title="meshTileTitle(node)"
             @click="showNode(node.node_id)"
           >
-            <span class="mesh-dot" :data-online="node.online && !node.disabled" />
             <strong>{{ displayName(node) }}</strong>
             <small>{{ node.address }}</small>
+            <PcStateDot :tone="agentStatus(node).tone" :label="agentStatus(node).label" :title="agentStatus(node).title" />
           </button>
         </div>
 

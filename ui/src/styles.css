@@ -25,14 +25,26 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 
 /* ── Mesh lens: the readiness grid ──────────────────────────────────────── */
 .mesh { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-3); padding: var(--space-4); background: var(--pc-group-surface); }
-.mesh-core, .mesh-peer { display: flex; min-height: 76px; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--foreground); background: var(--card); font: inherit; }
+.mesh-core, .mesh-peer { display: flex; min-height: 76px; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-2); color: var(--foreground); background: var(--card); font: inherit; text-align: center; }
 .mesh-core { color: var(--primary-foreground); border-color: var(--primary); background: var(--primary); }
 .mesh-core strong, .mesh-peer strong { max-width: 100%; overflow: hidden; font-size: var(--pc-text-xs); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-.mesh-core span, .mesh-peer small { max-width: 100%; overflow: hidden; font-family: var(--font-mono); font-size: var(--pc-text-label); opacity: 0.72; text-overflow: ellipsis; white-space: nowrap; }
-.mesh-peer { position: relative; padding: var(--space-3) var(--space-2); cursor: pointer; transition: border-color var(--pc-dur) var(--pc-ease), background-color var(--pc-dur) var(--pc-ease); }
+/* The core tile's one sentence is the point of the lens, so it wraps; the
+   tile is a block, not a table row. A peer's address stays on one line and
+   the tile's title carries it in full. */
+.mesh-core span { font-family: var(--font-mono); font-size: var(--pc-text-label); line-height: 1.4; opacity: 0.85; }
+.mesh-peer small { max-width: 100%; overflow: hidden; font-family: var(--font-mono); font-size: var(--pc-text-label); opacity: 0.72; text-overflow: ellipsis; white-space: nowrap; }
+.mesh-peer { cursor: pointer; transition: border-color var(--pc-dur) var(--pc-ease), background-color var(--pc-dur) var(--pc-ease); }
 .mesh-peer:hover { border-color: var(--primary); background: var(--pc-hover-solid); }
-.mesh-dot { position: absolute; top: var(--space-2); right: var(--space-2); width: 7px; height: 7px; border-radius: 50%; background: var(--muted-foreground); }
-.mesh-dot[data-online="true"] { background: var(--success-text); }
+/* The agent state in the dot form the fleet table uses: the disc and the word. */
+.mesh-peer .pc-state-dot { margin-top: 2px; }
+
+/* ── The open node's fold: row, detail and peers as one attached block ──── */
+/* The chassis's open surface (muted 40% over transparent), mixed opaque so the
+   sticky name and actions cells of a peer row do not let other rows show
+   through while the wrap scrolls sideways. */
+.pc-table .peer-row > td { background-color: color-mix(in oklab, var(--muted) 40%, var(--card)); }
+/* In the stacked form the chassis paints a row's surface on the tr, as it does for group rows. */
+.pc-table[data-stacked="true"] .peer-row { background-color: color-mix(in oklab, var(--muted) 40%, var(--card)); }
 
 /* What the fleet is missing, counted. "Ready nodes 0 / 35" on its own tells an
    operator nothing about which half of the pair has not arrived. */

@@ -67,3 +67,44 @@ export function proofSegments(readiness: MeshReadiness, observedAt: Date | undef
     `${readiness.onlineReady} online`,
   ];
 }
+
+/** The node's display name: the agent's name, or its id when it reported none. */
+export function displayName(node: WireGuardNode): string {
+  return node.name || node.node_id;
+}
+
+export type AgentState = "online" | "offline" | "disabled";
+
+/** The word beside the dot. Colour is never the only carrier (design 4.7). */
+export function agentState(node: WireGuardNode): AgentState {
+  if (node.disabled) return "disabled";
+  return node.online ? "online" : "offline";
+}
+
+/** The mesh tile's title: name, state word, address, and what a click does. */
+export function meshTileTitle(node: WireGuardNode): string {
+  return `${displayName(node)}, ${agentState(node)}, reported ${node.address}. Open it in the fleet list.`;
+}
+
+/**
+ * The id line of a peer row folded under a node. It leads with the owner, so
+ * a peer still says whose it is after the node row has scrolled off the top.
+ */
+export function peerSubline(owner: WireGuardNode, peer: WireGuardNode): string {
+  return `peer of ${displayName(owner)} · ${peer.node_id}`;
+}
+
+export interface FleetNotice {
+  tone: "danger" | "warning";
+  title: string;
+  /** Only once rows stand behind it. With nothing loaded, the notice and the empty block are one state and dismissing it would leave a false empty fleet. */
+  dismissible: boolean;
+}
+
+/** The page-level notice for a handshake or read failure; absent while nothing has failed. */
+export function fleetNotice(state: { bootError: string; error: string; loaded: number }): FleetNotice | undefined {
+  if (state.bootError) return { tone: "danger", title: "This page has no console session", dismissible: false };
+  if (!state.error) return undefined;
+  if (state.loaded > 0) return { tone: "warning", title: "The fleet below is the last good read, not the current one", dismissible: true };
+  return { tone: "danger", title: "The fleet could not be refreshed", dismissible: false };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterNodes, formatClock, lensFrom, matchesSearch, pageCount, pageOf, pageSlice, proofSegments } from "./fleetView";
+import { agentState, filterNodes, fleetNotice, formatClock, lensFrom, matchesSearch, meshTileTitle, pageCount, pageOf, pageSlice, peerSubline, proofSegments } from "./fleetView";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
 function node(overrides: Partial<WireGuardNode> = {}): WireGuardNode {
@@ -95,5 +95,53 @@ describe("proof line", () => {
   it("says so before the first read has landed, and uses the singular for one node", () => {
     expect(proofSegments(summarizeReadiness([]), undefined)[0]).toBe("not observed yet");
     expect(proofSegments(summarizeReadiness([node()]), undefined)[1]).toBe("1 node");
+  });
+});
+
+describe("the page notice", () => {
+  it("is absent while nothing has failed", () => {
+    expect(fleetNotice({ bootError: "", error: "", loaded: 0 })).toBeUndefined();
+    expect(fleetNotice({ bootError: "", error: "", loaded: 3 })).toBeUndefined();
+  });
+
+  it("cannot be dismissed while nothing has loaded: the notice and the empty block are one state", () => {
+    // Dismissing it dropped the page through to the loaded branch, which then
+    // claimed an empty fleet and hinted at a permission problem for a 503.
+    const boot = fleetNotice({ bootError: "no session", error: "", loaded: 0 })!;
+    expect(boot.tone).toBe("danger");
+    expect(boot.title).toBe("This page has no console session");
+    expect(boot.dismissible).toBe(false);
+
+    const failed = fleetNotice({ bootError: "", error: "503", loaded: 0 })!;
+    expect(failed.tone).toBe("danger");
+    expect(failed.title).toBe("The fleet could not be refreshed");
+    expect(failed.dismissible).toBe(false);
+  });
+
+  it("can be dismissed once rows stand behind it, where it only says the read is stale", () => {
+    const stale = fleetNotice({ bootError: "", error: "503", loaded: 35 })!;
+    expect(stale.tone).toBe("warning");
+    expect(stale.title).toBe("The fleet below is the last good read, not the current one");
+    expect(stale.dismissible).toBe(true);
+  });
+});
+
+describe("the agent state word", () => {
+  it("is printed wherever the dot is: mesh tiles carry it in the title as well", () => {
+    const ready = { address: "10.66.0.7", public_key: "k".repeat(44) };
+    expect(agentState(node({ ...ready, online: true }))).toBe("online");
+    expect(agentState(node({ ...ready, online: false }))).toBe("offline");
+    expect(agentState(node({ ...ready, online: true, disabled: true }))).toBe("disabled");
+    expect(meshTileTitle(node({ ...ready, online: false }))).toBe("hkg-edge-01, offline, reported 10.66.0.7. Open it in the fleet list.");
+    expect(meshTileTitle(node({ ...ready, name: "", online: true }))).toBe("node-hkg-edge-01, online, reported 10.66.0.7. Open it in the fleet list.");
+  });
+});
+
+describe("a peer row names its owner", () => {
+  it("leads the id line with the node it folds under, so the owner survives when it has scrolled off", () => {
+    const owner = node({ node_id: "node-ams-hub-01", name: "ams-hub-01" });
+    const peer = node({ node_id: "node-vie-relay-01", name: "vie-relay-01" });
+    expect(peerSubline(owner, peer)).toBe("peer of ams-hub-01 · node-vie-relay-01");
+    expect(peerSubline(node({ node_id: "node-x", name: "" }), peer)).toBe("peer of node-x · node-vie-relay-01");
   });
 });
