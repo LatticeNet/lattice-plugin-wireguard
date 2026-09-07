@@ -14,3 +14,8 @@ seed
 seed.*
 *_seed
 *.bin
+
+# The compiled system-go binary was committed by accident. It is a host
+# artifact, never part of the signed bundle (which carries bin/<os>-<arch>/plugin
+# built in CI), so tracking it only produced a 3 MB diff whenever anyone built.
+/system-go/system-go
