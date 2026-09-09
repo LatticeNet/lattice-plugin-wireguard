@@ -11,7 +11,7 @@
   ],
   "version": "0.1.0-alpha.15",
   "publisher": "latticenet",
-  "signature_ed25519": "v1aDeSC7hJXxQbh075z2fqk7wB3EDI+guvF6AEz7BxaTkP9OnJLBn6RsfakigORLxkevbYQss6dbDavNVyafDA==",
+  "signature_ed25519": "",
   "bundle": {
     "format": "tar+gzip",
     "digest_sha256": "644167f07ba7f34bf350ef319f8dcae33c7a17af5a9660a8158089753a797bf3"
