@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { agentState, filterNodes, fleetNotice, formatClock, matchesSearch, pageCount, pageOf, pageSlice, proofSegments } from "./fleetView";
+import { ageLabel, agentState, agentTone, filterNodes, fleetNotice, formatClock, matchesSearch, pageCount, pageOf, pageSlice, proofSegments, proofTitle, seenLabel } from "./fleetView";
 import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
@@ -81,28 +81,53 @@ describe("proof line", () => {
       node({ node_id: "n3", online: true }),
       node({ node_id: "n4", online: true, disabled: true }),
     ];
-    const segments = proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: new Date(2026, 7, 18, 23, 21, 14), error: "", locale: "en-GB" });
-    expect(segments).toEqual(["observed at 23:21:14", "4 nodes", "2 agents online", "1 disabled", "2 mesh-ready"]);
+    const read = new Date(2026, 7, 18, 23, 21, 14);
+    const segments = proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: read, error: "", now: read.getTime() + 13_000 });
+    expect(segments).toEqual(["observed 13s ago", "4 nodes", "2 agents online", "1 disabled", "2 mesh-ready"]);
   });
 
   it("prints production's fleet the way production has it: agents online, nothing ready", () => {
     const nodes = Array.from({ length: 34 }, (_, index) => node({ node_id: `n${index}`, online: index > 1 }));
-    const segments = proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: new Date(2026, 8, 30, 9, 23, 44), error: "", locale: "en-GB" });
-    expect(segments).toEqual(["observed at 09:23:44", "34 nodes", "32 agents online", "0 mesh-ready"]);
+    const read = new Date(2026, 8, 30, 9, 23, 44);
+    const segments = proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: read, error: "", now: read.getTime() + 125_000 });
+    expect(segments).toEqual(["observed 2m ago", "34 nodes", "32 agents online", "0 mesh-ready"]);
   });
 
   it("states no count when a read failed with nothing loaded, and names the read the counts come from after one landed", () => {
-    const empty = { readiness: summarizeReadiness([]), agents: agentCounts([]) };
+    const empty = { readiness: summarizeReadiness([]), agents: agentCounts([]), now: 0 };
     expect(proofSegments({ ...empty, observedAt: undefined, error: "503 service unavailable" })).toEqual(["not read: 503 service unavailable"]);
     expect(proofSegments({ ...empty, observedAt: undefined, error: "" })).toEqual(["reading the fleet"]);
     const nodes = [node({ online: true })];
-    expect(proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: new Date(2026, 0, 1, 8, 0, 0), error: "503", locale: "en-GB" })).toEqual([
-      "last good read at 08:00:00",
+    const read = new Date(2026, 0, 1, 8, 0, 0);
+    expect(proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: read, error: "503", now: read.getTime() + 3 * 3_600_000 })).toEqual([
+      "last good read 3h ago",
       "1 node",
       "1 agent online",
       "0 mesh-ready",
       "refresh failed",
     ]);
+  });
+});
+
+describe("ages and the agent column", () => {
+  it("prints an age in the largest whole unit and puts the instant in the proof title", () => {
+    const at = new Date(2026, 8, 30, 9, 0, 0);
+    expect(ageLabel(at, at.getTime() + 41_000)).toBe("41s");
+    expect(ageLabel(at, at.getTime() + 12 * 60_000)).toBe("12m");
+    expect(ageLabel(at, at.getTime() + 3 * 3_600_000)).toBe("3h");
+    expect(ageLabel(at, at.getTime() + 7 * 86_400_000)).toBe("7d");
+    expect(ageLabel("not a time", 0)).toBe("");
+    expect(proofTitle(at, "en-GB")).toBe("Fleet read at 09:00:00 on 30 Sept 2026. Refresh reads it again.");
+  });
+
+  it("labels the agent's age and draws offline in the console's red", () => {
+    const seen = "2026-09-30T09:00:00Z";
+    const now = Date.parse(seen) + 120_000;
+    expect(seenLabel(node({ last_seen: seen }), now)).toBe("seen 2m ago");
+    expect(seenLabel(node({}), now)).toBe("never seen");
+    expect(agentTone(node({ online: true }))).toBe("healthy");
+    expect(agentTone(node({ online: false }))).toBe("error");
+    expect(agentTone(node({ online: true, disabled: true }))).toBe("neutral");
   });
 });
 

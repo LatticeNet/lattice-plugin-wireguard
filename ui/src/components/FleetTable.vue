@@ -22,10 +22,9 @@ import {
   PcTd,
   PcTh,
   type SortState,
-  type StateTone,
 } from "@latticenet/plugin-bridge/chassis";
 
-import { agentState, displayName } from "../fleetView";
+import { agentState, agentTone, displayName, seenLabel } from "../fleetView";
 import type { GapGroup, ReportedColumns } from "../readiness";
 import type { MenuItem } from "../rowMenu";
 import { hostRoute, readinessGap, readinessGapLabel, redactedKey, type NodeSortKey, type WireGuardNode } from "../wireguardModel";
@@ -38,6 +37,8 @@ const props = defineProps<{
   columns: ReportedColumns;
   activeId: string;
   canPlan: boolean;
+  /** Now, for the agents' ages. */
+  now: number;
   sortKey: NodeSortKey;
   sortDirection: "asc" | "desc";
 }>();
@@ -59,11 +60,6 @@ const minWidth = computed(() => fits.value ? 0 : 360 + (props.columns.address ? 
 function sortFor(key: NodeSortKey): SortState {
   if (props.sortKey !== key) return "none";
   return props.sortDirection === "asc" ? "ascending" : "descending";
-}
-
-function tone(node: WireGuardNode): StateTone {
-  const state = agentState(node);
-  return state === "online" ? "healthy" : state === "disabled" ? "neutral" : "warning";
 }
 
 function lastSeen(value?: string): string {
@@ -151,8 +147,8 @@ function openRow(event: MouseEvent, nodeId: string): void {
           <span :class="node.endpoint ? undefined : 'wg-absent'">{{ node.endpoint || 'dial-out only' }}</span>
         </PcTd>
         <PcTd label="Agent" :title="`${agentState(node)}, last seen ${lastSeen(node.last_seen)}`">
-          <PcStateDot :tone="tone(node)" :label="agentState(node)" />
-          <small>{{ lastSeen(node.last_seen) }}</small>
+          <PcStateDot :tone="agentTone(node)" :label="agentState(node)" />
+          <small>{{ seenLabel(node, now) }}</small>
         </PcTd>
         <PcActionsCell v-if="canPlan">
           <RowMenu :label="`Actions for ${displayName(node)}`" :items="menuFor(node)" @select="emit('plan', node)" />

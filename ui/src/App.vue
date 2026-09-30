@@ -40,8 +40,9 @@ import FleetTable from "./components/FleetTable.vue";
 import MeshList from "./components/MeshList.vue";
 import NodeFacts from "./components/NodeFacts.vue";
 import ReadinessOverview from "./components/ReadinessOverview.vue";
+import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
-import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments } from "./fleetView";
+import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
 import { TASKS_ROUTE, postNavigate } from "./navigate";
 import {
@@ -170,7 +171,10 @@ const agents = computed(() => agentCounts(nodes.value));
 // the panel. The server's `configuration` field is the same rule.
 const readyNodes = computed(() => meshReadyNodes(nodes.value));
 const peerCount = computed(() => Math.max(0, readyNodes.value.length - 1));
-const proof = computed(() => proofSegments({ readiness: readiness.value, agents: agents.value, observedAt: observedAt.value, error: error.value }));
+/** Ages on this page count from now; the instant each counts from is in a title. */
+const now = useNow();
+const proof = computed(() => proofSegments({ readiness: readiness.value, agents: agents.value, observedAt: observedAt.value, error: error.value, now: now.value }));
+const proofInstant = computed(() => proofTitle(observedAt.value));
 // A refresh that failed after a good read leaves the rows standing; the
 // notice then says the table is the last good read, not the current one, and
 // only that notice can be dismissed. With nothing loaded there is nothing
@@ -391,7 +395,7 @@ onBeforeUnmount(() => {
           Refresh
         </PcButton>
       </template>
-      <template #proof><PcProofLine :segments="proof" :refreshing="refreshing" /></template>
+      <template #proof><PcProofLine :segments="proof" :refreshing="refreshing" :title="proofInstant" /></template>
     </PcPageHeader>
 
     <PcNotice
@@ -481,6 +485,7 @@ onBeforeUnmount(() => {
           :columns="columns"
           :active-id="openId"
           :can-plan="canPlan"
+          :now="now"
           :sort-key="sortKey"
           :sort-direction="sortDirection"
           @open="openPanel"

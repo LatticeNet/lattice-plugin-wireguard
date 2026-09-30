@@ -58,6 +58,7 @@ function build(scenario: Scenario): FixtureNode[] {
     const hasKey = scenario === "rich" && index % 4 !== 3;
     const configuration = hasAddress && hasKey ? "ready" : hasAddress || hasKey ? "partial" : "missing";
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const online = scenario === "rich" ? index % 6 !== 1 : !OFFLINE.has(name);
     return {
       node_id: `node_${slug}`,
       name,
@@ -66,10 +67,12 @@ function build(scenario: Scenario): FixtureNode[] {
       endpoint: scenario === "rich" && index % 5 === 0 ? `${slug}.example.invalid:51820` : undefined,
       listen_port: scenario === "rich" && index % 5 === 0 ? 51820 : undefined,
       public_ip: `203.0.113.${index + 1}`,
-      online: scenario === "rich" ? index % 6 !== 1 : !OFFLINE.has(name),
+      online,
       disabled: scenario === "rich" && index % 11 === 4,
-      // Invented times: online agents reported this morning, offline ones days ago.
-      last_seen: new Date(OFFLINE.has(name) && scenario !== "rich" ? Date.UTC(2026, 8, 24, 3, index % 60) : Date.UTC(2026, 8, 30, 9, index % 60)).toISOString(),
+      // Invented times, counted back from now so the relative ages read the
+      // way production's do: an online agent reported seconds ago, an
+      // offline one days ago.
+      last_seen: new Date(Date.now() - (online ? 15 + index * 7 : 6 * 86_400 + index * 3_600) * 1000).toISOString(),
       configuration,
     };
   });

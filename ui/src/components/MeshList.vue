@@ -11,10 +11,9 @@ import {
   PcTable,
   PcTd,
   PcTh,
-  type StateTone,
 } from "@latticenet/plugin-bridge/chassis";
 
-import { agentState, displayName } from "../fleetView";
+import { agentState, agentTone, displayName } from "../fleetView";
 import { hostRoute, type WireGuardNode } from "../wireguardModel";
 
 defineProps<{
@@ -23,11 +22,6 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ (event: "open", nodeId: string): void }>();
-
-function tone(node: WireGuardNode): StateTone {
-  const state = agentState(node);
-  return state === "online" ? "healthy" : state === "disabled" ? "neutral" : "warning";
-}
 
 function openRow(event: MouseEvent, nodeId: string): void {
   const selection = window.getSelection();
@@ -63,7 +57,7 @@ function openRow(event: MouseEvent, nodeId: string): void {
         <PcTd label="Endpoint" mono :title="node.endpoint || 'No public endpoint: this node dials out and cannot be dialled'">
           <span :class="node.endpoint ? undefined : 'wg-absent'">{{ node.endpoint || 'dial-out only' }}</span>
         </PcTd>
-        <PcTd label="Agent"><PcStateDot :tone="tone(node)" :label="agentState(node)" /></PcTd>
+        <PcTd label="Agent"><PcStateDot :tone="agentTone(node)" :label="agentState(node)" /></PcTd>
       </PcRow>
     </tbody>
   </PcTable>

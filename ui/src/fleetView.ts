@@ -42,9 +42,29 @@ export function pageSlice<T>(items: readonly T[], page: number, size = PAGE_SIZE
   return items.slice(start, start + size);
 }
 
-/** "09:05:07": the absolute time of the last read, for the proof line. */
+/** "09:05:07": the absolute time of the last read, for the proof line's title. */
 export function formatClock(date: Date, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(date);
+}
+
+/** "41s", "12m", "3h", "2d": how old an instant is at `now`; "" when it does not parse. */
+export function ageLabel(at: Date | string | undefined, now: number): string {
+  const time = at instanceof Date ? at.getTime() : at ? Date.parse(at) : Number.NaN;
+  if (Number.isNaN(time)) return "";
+  const seconds = Math.max(0, Math.round((now - time) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+/** The proof line's title: the absolute instant its relative age counts from. */
+export function proofTitle(observedAt: Date | undefined, locale?: string): string {
+  if (!observedAt) return "";
+  const day = new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(observedAt);
+  return `Fleet read at ${formatClock(observedAt, locale)} on ${day}. Refresh reads it again.`;
 }
 
 export interface ProofInput {
@@ -54,19 +74,21 @@ export interface ProofInput {
   observedAt: Date | undefined;
   /** Why the newest read failed; empty when it did not. */
   error: string;
-  locale?: string;
+  /** Now, for the read's age. */
+  now: number;
 }
 
 /**
  * The proof line under the header: when the fleet was last read, how many
  * nodes answered, how many agents are online and how many nodes are
  * mesh-ready. Agents online and mesh-ready are two facts and are counted
- * apart. No timer runs behind it; the time names the read, not the present.
+ * apart. The age is relative, the console's form ("observed 13s ago"), and
+ * the absolute instant is the line's title (proofTitle).
  * A read that failed with nothing loaded states no count at all, and one that
  * failed after a good read says the counts are that read's.
  */
 export function proofSegments(input: ProofInput): string[] {
-  const { readiness, agents, observedAt, error, locale } = input;
+  const { readiness, agents, observedAt, error, now } = input;
   if (!observedAt) return error ? [`not read: ${error}`] : ["reading the fleet"];
   const counts = [
     `${readiness.total} ${readiness.total === 1 ? "node" : "nodes"}`,
@@ -74,8 +96,8 @@ export function proofSegments(input: ProofInput): string[] {
     ...(agents.disabled ? [`${agents.disabled} disabled`] : []),
     `${readiness.ready} mesh-ready`,
   ];
-  if (error) return [`last good read at ${formatClock(observedAt, locale)}`, ...counts, "refresh failed"];
-  return [`observed at ${formatClock(observedAt, locale)}`, ...counts];
+  if (error) return [`last good read ${ageLabel(observedAt, now)} ago`, ...counts, "refresh failed"];
+  return [`observed ${ageLabel(observedAt, now)} ago`, ...counts];
 }
 
 /** The node's display name: the agent's name, or its id when it reported none. */
@@ -89,6 +111,18 @@ export type AgentState = "online" | "offline" | "disabled";
 export function agentState(node: WireGuardNode): AgentState {
   if (node.disabled) return "disabled";
   return node.online ? "online" : "offline";
+}
+
+/** The dot's tone. Offline is the console's offline red, not a warning amber. */
+export function agentTone(node: WireGuardNode): "healthy" | "error" | "neutral" {
+  const state = agentState(node);
+  return state === "online" ? "healthy" : state === "offline" ? "error" : "neutral";
+}
+
+/** "seen 2m ago" under the agent's state; the absolute time goes in the cell's title. */
+export function seenLabel(node: WireGuardNode, now: number): string {
+  const age = ageLabel(node.last_seen, now);
+  return age ? `seen ${age} ago` : "never seen";
 }
 
 export interface FleetNotice {
