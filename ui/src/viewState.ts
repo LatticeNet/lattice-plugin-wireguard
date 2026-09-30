@@ -41,3 +41,25 @@ export function decodeWgState(state: PageState): WgPageState {
   const legacyNode = (state.expand ?? "").split(",").map((id) => id.trim()).find(Boolean) ?? "";
   return { view, open: state.open ?? legacyNode, q: state.q ?? "" };
 }
+
+/** What the node panel on `open=<id>` can honestly show. */
+export type NodePanelState = "found" | "loading" | "unread" | "missing";
+
+/**
+ * "missing" is a claim that the node is not in the fleet, so only a read that
+ * landed may make it. While nothing has landed or failed the panel is
+ * loading; once the read that lists nodes has failed, the node was not read.
+ */
+export function nodePanelState(input: { found: boolean; loading: boolean; readFailed: boolean }): NodePanelState {
+  if (input.found) return "found";
+  if (input.loading) return "loading";
+  return input.readFailed ? "unread" : "missing";
+}
+
+/** The panel title for a node the panel could not show; a found node titles the panel with its name. */
+export const PANEL_TITLE: Record<NodePanelState, string> = {
+  found: "",
+  loading: "Loading node",
+  unread: "Node not read",
+  missing: "Node not found",
+};

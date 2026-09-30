@@ -56,7 +56,7 @@ import {
   type StateSender,
 } from "./pageState";
 import { agentCounts, gapGroups, meshAttention, missingColumnsNote, readinessBar, reportedColumns, type AttentionActionKind } from "./readiness";
-import { decodeWgState, encodeWgState, type WgPageState, type WgView } from "./viewState";
+import { PANEL_TITLE, decodeWgState, encodeWgState, nodePanelState, type WgPageState, type WgView } from "./viewState";
 import {
   PRIVATE_KEY_PLACEHOLDER,
   hostRoute,
@@ -220,7 +220,13 @@ function toggleSort(key: NodeSortKey): void {
 // ── the node panel ──────────────────────────────────────────────────────────
 
 const openNode = computed(() => nodes.value.find((node) => node.node_id === openId.value));
-const panelTitle = computed(() => (openNode.value ? displayName(openNode.value) : landed.value ? "Node not found" : "Loading node"));
+/*
+ * The panel says a node is not in the fleet only on a read that landed. While
+ * the newest read has failed it says the node was not read and offers the
+ * retry; a failed first read used to leave the skeleton spinning for good.
+ */
+const panelState = computed(() => nodePanelState({ found: Boolean(openNode.value), loading: loading.value, readFailed: Boolean(error.value) }));
+const panelTitle = computed(() => (openNode.value ? displayName(openNode.value) : PANEL_TITLE[panelState.value]));
 const panelDescription = computed(() => (openNode.value ? `${openNode.value.node_id} · agent ${agentState(openNode.value)}` : openId.value));
 
 function openPanel(nodeId: string): void {
@@ -519,8 +525,12 @@ onBeforeUnmount(() => {
       close-label="Close node panel"
       @close="closePanel"
     >
-      <PcSkeleton v-if="!landed" :count="6" label="Loading this node" />
-      <PcEmptyState v-else-if="!openNode" title="This node is not in the fleet this session can see">
+      <PcSkeleton v-if="panelState === 'loading'" :count="6" label="Loading this node" />
+      <PcEmptyState v-else-if="panelState === 'unread'" kind="error" title="This node could not be read">
+        <p>The fleet read failed, so whether <span class="pc-mono">{{ openId }}</span> is in the fleet is not known. The message on the page says what stopped it.</p>
+        <template #actions><PcButton :busy="refreshing" @click="refresh()">Try again</PcButton></template>
+      </PcEmptyState>
+      <PcEmptyState v-else-if="panelState === 'missing' || !openNode" title="This node is not in the fleet this session can see">
         <p>The link names <span class="pc-mono">{{ openId }}</span>, which the overview does not list. It may have been removed, or be outside this session's read scope.</p>
         <template #actions><PcButton @click="closePanel(); view = 'fleet'">Show the fleet</PcButton></template>
       </PcEmptyState>
