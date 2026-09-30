@@ -44,7 +44,6 @@ import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
 import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
-import { useNonModalPanel } from "./nonModalPanel";
 import { TASKS_ROUTE, postNavigate } from "./navigate";
 import {
   channelFromHash,
@@ -257,8 +256,8 @@ function closePanel(): void {
   openId.value = "";
 }
 
-/* From 768px up the panel sits beside the rows (nonModalPanel.ts). */
-const panelMode = useNonModalPanel(() => Boolean(openId.value) && !bootError.value, "wg-node-panel");
+/* From 768px the panel sits beside the rows (styles.css); below, it is a modal sheet. */
+const PANEL_BESIDE_ROWS = "(min-width: 768px)";
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   if (!bridge || !canCall(init.value, SERVICE, method)) {
@@ -375,7 +374,8 @@ onMounted(() => {
   // or the panel below 768px. Beside the rows, the panel is part of the
   // page and the read goes on.
   poller = setInterval(() => {
-    const modal = overlayDepth() - (openId.value && panelMode.wide.value ? 1 : 0);
+    const beside = Boolean(openId.value) && window.matchMedia(PANEL_BESIDE_ROWS).matches;
+    const modal = overlayDepth() - (beside ? 1 : 0);
     if (!loading.value && modal === 0) void refresh();
   }, 20_000);
   void resize();
@@ -543,7 +543,6 @@ onBeforeUnmount(() => {
       class="wg-node-panel"
       close-label="Close node panel"
       :return-focus-to="panelReturn"
-      @keydown.capture="panelMode.onKeydownCapture"
       @close="closePanel"
     >
       <PcSkeleton v-if="panelState === 'loading'" :count="6" label="Loading this node" />

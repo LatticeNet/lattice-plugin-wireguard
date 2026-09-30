@@ -143,14 +143,20 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 
 /* ── The node panel ─────────────────────────────────────────────────────── */
 
-/* chassis-workaround: PcSidePanel is always modal. From 768px up the panel
-   sits beside the rows: no scrim, and clicks reach the rows under it, so a
-   row click swaps the open node (nonModalPanel.ts undoes the Tab trap and
-   aria-modal). Below 768px it stays the full-height modal. Remove once
-   plugin-bridge gives PcSidePanel a non-modal form. */
+/* chassis-workaround: PcSidePanel is always modal. From 768px the node panel
+   sits beside the rows (design 23, 3.5; the 2026-09-30 design review
+   decision for every plugin): no scrim, and the rows around it stay live,
+   so a click on another row swaps open=. Below 768px it stays a modal,
+   full-height sheet. This is CSS only, the same rules as Sub-Store and
+   vpn-core: the panel still says aria-modal and keeps Tab inside it, so
+   keyboard and screen-reader behaviour is modal as before. Remove once
+   plugin-bridge gives PcSidePanel a non-modal form (a modal prop, or
+   automatic at min-width 768px): no scrim, pointer events through the
+   .pc-overlay wrapper, aria-modal false or role=complementary with a
+   label, no Tab wrap, Escape and focus return kept. */
 @media (min-width: 768px) {
-  .wg-node-panel.pc-overlay[data-kind="panel"] { background: transparent; pointer-events: none; }
-  .wg-node-panel .pc-side-panel { pointer-events: auto; }
+  .pc-overlay[data-kind="panel"] { background: transparent; pointer-events: none; }
+  .pc-overlay[data-kind="panel"] > .pc-side-panel { pointer-events: auto; }
 }
 .wg-node-panel .pc-side-panel { width: min(560px, 100%); }
 .wg-node { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--pc-text-sm); }
