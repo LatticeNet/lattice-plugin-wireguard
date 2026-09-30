@@ -78,8 +78,8 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 .wg-layer-tabs .pc-lens-tab:hover { color: var(--foreground); }
 .wg-layer-tabs .pc-lens-tab[aria-selected="true"] { color: var(--foreground); background: transparent; box-shadow: inset 0 -2px 0 var(--primary); }
 .wg-layer-tabs .pc-lens-tab:focus-visible { border-radius: var(--radius-sm); outline: 2px solid var(--ring, var(--primary)); outline-offset: -2px; }
-.wg-layer-tabs .pc-count { color: var(--muted-foreground); }
-.wg-layer-tabs .pc-lens-tab[aria-selected="true"] .pc-count { color: var(--foreground); }
+/* vpn-core's count pill: 10px at weight 650, muted on muted, selected or not. */
+.wg-layer-tabs .pc-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: var(--muted-foreground); background: var(--muted); font-size: var(--pc-text-badge); font-weight: 650; }
 
 @media (max-width: 620px) {
   .wg-layer-bar { box-shadow: none; }

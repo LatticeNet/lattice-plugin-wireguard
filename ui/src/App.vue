@@ -44,6 +44,7 @@ import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
 import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
+import { revealSelectedTab } from "./layerTabs";
 import { TASKS_ROUTE, postNavigate } from "./navigate";
 import {
   channelFromHash,
@@ -258,6 +259,12 @@ function closePanel(): void {
 
 /* From 768px the panel sits beside the rows (styles.css); below, it is a modal sheet. */
 const PANEL_BESIDE_ROWS = "(min-width: 768px)";
+
+/* The segmented layer row scrolls sideways in a narrow frame; keep the
+ * selected layer in it, again once a read lands, since the tab counts it
+ * adds widen the row. */
+onMounted(() => revealSelectedTab(document.querySelector(".wg-layer-tabs")));
+watch([view, landed], () => revealSelectedTab(document.querySelector(".wg-layer-tabs")), { flush: "post" });
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   if (!bridge || !canCall(init.value, SERVICE, method)) {
