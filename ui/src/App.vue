@@ -11,7 +11,7 @@
  * console's address, so a reload or a pasted link lands on the same place.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { CheckCircle2, Copy, FileCode2, KeyRound, LayoutDashboard, Network, RefreshCw, Route, Server, ShieldCheck, Spline } from "@lucide/vue";
+import { CheckCircle2, Copy, FileCode2, KeyRound, Network, RefreshCw, Route, ShieldCheck, Spline } from "@lucide/vue";
 
 import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
 import {
@@ -409,24 +409,24 @@ onBeforeUnmount(() => {
     </PcNotice>
     <PcNotice v-if="notice" tone="success" dismissible dismiss-label="Dismiss notice" @dismiss="notice = ''">{{ notice }}</PcNotice>
 
-    <PcToolbar label="WireGuard toolbar">
+    <!-- The layers: an underline row of their own (design review of wave 1,
+         "Tab decision"). Only Fleet has a toolbar, and only over rows or a
+         search (design 23 section 3.7). -->
+    <PcToolbar class="wg-layer-bar" label="WireGuard layers">
       <template #tabs>
-        <PcLensTabs v-model="view" label="WireGuard layers">
-          <PcLensTab value="overview" label="Overview">
-            <template #icon><LayoutDashboard :size="14" aria-hidden="true" /></template>
-          </PcLensTab>
-          <PcLensTab value="fleet" label="Fleet" :count="landed ? readiness.total : null">
-            <template #icon><Server :size="14" aria-hidden="true" /></template>
-          </PcLensTab>
-          <PcLensTab value="mesh" label="Mesh" :count="landed ? readyNodes.length : null">
-            <template #icon><Spline :size="14" aria-hidden="true" /></template>
-          </PcLensTab>
+        <PcLensTabs v-model="view" class="wg-layer-tabs" label="WireGuard layers">
+          <PcLensTab value="overview" label="Overview" />
+          <PcLensTab value="fleet" label="Fleet" :count="landed ? readiness.total : null" />
+          <PcLensTab value="mesh" label="Mesh" :count="landed ? readyNodes.length : null" />
         </PcLensTabs>
       </template>
-      <template v-if="view === 'fleet' && landed" #search>
+    </PcToolbar>
+
+    <PcToolbar v-if="view === 'fleet' && landed && (nodes.length || searching)" label="Fleet toolbar">
+      <template #search>
         <PcSearchField v-model="search" label="Search fleet" placeholder="Search node, address, endpoint or key" />
       </template>
-      <template v-if="view === 'fleet' && searching" #note>{{ visibleNodes.length }} of {{ readiness.total }} nodes match</template>
+      <template v-if="searching" #note>{{ visibleNodes.length }} of {{ readiness.total }} nodes match</template>
     </PcToolbar>
 
     <PcPanel v-if="handshakeExpired && !init && !bootError">
