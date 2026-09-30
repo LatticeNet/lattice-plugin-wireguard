@@ -44,6 +44,7 @@ import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
 import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
+import { useNonModalPanel } from "./nonModalPanel";
 import { TASKS_ROUTE, postNavigate } from "./navigate";
 import {
   channelFromHash,
@@ -242,21 +243,22 @@ function openPanel(nodeId: string): void {
 }
 
 /**
- * Close the panel. Focus goes back to whatever opened it; a panel the address
- * opened (a reload, a pasted link) had no opener, so focus lands on that
- * node's row instead of falling to the page.
+ * Close the panel. Focus goes back to the row of the node that is open now:
+ * with the panel non-modal a row click swaps the node, so that is not always
+ * the row that first opened it, and a panel the address opened (a reload, a
+ * pasted link) had no opener at all. By id, never through a selector: the
+ * id came from the address.
  */
-async function closePanel(): Promise<void> {
+const panelReturn = ref<HTMLElement | null>(null);
+function closePanel(): void {
   const closed = openId.value;
+  const row = closed ? (document.getElementById(`node-${closed}`) ?? document.getElementById(`mesh-${closed}`)) : null;
+  panelReturn.value = row?.querySelector<HTMLElement>(".wg-row-open") ?? null;
   openId.value = "";
-  await nextTick();
-  const active = document.activeElement;
-  if (closed && (!active || active === document.body)) {
-    // By id, never through a selector: `closed` came from the address.
-    const row = document.getElementById(`node-${closed}`) ?? document.getElementById(`mesh-${closed}`);
-    row?.querySelector<HTMLElement>(".wg-row-open")?.focus();
-  }
 }
+
+/* From 768px up the panel sits beside the rows (nonModalPanel.ts). */
+const panelMode = useNonModalPanel(() => Boolean(openId.value) && !bootError.value, "wg-node-panel");
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   if (!bridge || !canCall(init.value, SERVICE, method)) {
@@ -369,7 +371,13 @@ let poller: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
   observer = new ResizeObserver(() => { void resize(); });
   observer.observe(document.body);
-  poller = setInterval(() => { if (!loading.value && overlayDepth() === 0) void refresh(); }, 20_000);
+  // The read pauses while a dialog is modal: the Plan form, the approval,
+  // or the panel below 768px. Beside the rows, the panel is part of the
+  // page and the read goes on.
+  poller = setInterval(() => {
+    const modal = overlayDepth() - (openId.value && panelMode.wide.value ? 1 : 0);
+    if (!loading.value && modal === 0) void refresh();
+  }, 20_000);
   void resize();
 });
 onBeforeUnmount(() => {
@@ -534,6 +542,8 @@ onBeforeUnmount(() => {
       :description="panelDescription"
       class="wg-node-panel"
       close-label="Close node panel"
+      :return-focus-to="panelReturn"
+      @keydown.capture="panelMode.onKeydownCapture"
       @close="closePanel"
     >
       <PcSkeleton v-if="panelState === 'loading'" :count="6" label="Loading this node" />
