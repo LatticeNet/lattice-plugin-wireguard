@@ -39,6 +39,9 @@ function itemButtons(): HTMLButtonElement[] {
 
 function focusIndex(index: number): void {
   if (index < 0) {
+    // Nothing is enabled: the menu itself (tabindex -1) takes focus, so
+    // Escape and Tab still reach onMenuKeydown and the disabled reasons stay
+    // on screen, instead of focus staying on the trigger.
     menu.value?.focus();
     return;
   }

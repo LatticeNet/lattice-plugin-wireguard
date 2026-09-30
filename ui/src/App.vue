@@ -152,6 +152,10 @@ try {
     init.value = value;
     await refresh();
   }).catch((cause) => {
+    // A handshake that never completes leaves the raw init listener
+    // registered for the life of the page; nothing will ever arrive for it.
+    stopInitListener?.();
+    stopInitListener = undefined;
     bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
   });
 } catch (cause) {
@@ -244,7 +248,9 @@ async function closePanel(): Promise<void> {
   await nextTick();
   const active = document.activeElement;
   if (closed && (!active || active === document.body)) {
-    document.querySelector<HTMLElement>(`[id="node-${closed}"] .wg-row-open, [id="mesh-${closed}"] .wg-row-open`)?.focus();
+    // By id, never through a selector: `closed` came from the address.
+    const row = document.getElementById(`node-${closed}`) ?? document.getElementById(`mesh-${closed}`);
+    row?.querySelector<HTMLElement>(".wg-row-open")?.focus();
   }
 }
 
