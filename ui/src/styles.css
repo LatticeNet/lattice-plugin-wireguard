@@ -113,7 +113,8 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
    (warning 2.5, a light grey 2.3), and a segment is a mark the operator reads. */
 [data-segment="ready"] { --wg-segment: var(--success-text); }
 [data-segment="partial"] { --wg-segment: var(--warning-text); }
-[data-segment="missing"] { --wg-segment: color-mix(in oklab, var(--muted-foreground) 75%, var(--card)); }
+/* 85%: 3.4:1 against the bar's track in light (4.6 in dark); 75% was 2.8. */
+[data-segment="missing"] { --wg-segment: color-mix(in oklab, var(--muted-foreground) 85%, var(--card)); }
 .wg-bar-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: var(--pc-text-sm); }
 .wg-bar-legend li { display: inline-flex; align-items: baseline; gap: 6px; }
 .wg-bar-legend li::before { width: 10px; height: 10px; align-self: center; border-radius: 2px; background: var(--wg-segment); content: ""; }
@@ -134,6 +135,8 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 .wg-click-row:hover .wg-row-open { text-decoration: underline; text-decoration-color: var(--muted-foreground); text-underline-offset: 3px; }
 .pc-table tr[data-selected="true"] > td.pc-name, .pc-table tr[data-selected="true"] > td.pc-actions { background-color: color-mix(in oklab, var(--primary) 8%, var(--card)); }
 .wg-absent { color: var(--muted-foreground); font-style: italic; }
+/* A row with nothing to plan says so where its menu would be; the why is its group row and this title. */
+.wg-row-reason { color: var(--muted-foreground); font-size: var(--pc-text-xs); white-space: nowrap; }
 .wg-group-note { height: auto; }
 .pc-table .wg-group-note .pc-group-summary { display: block; white-space: normal; }
 .wg-mono { font-family: var(--font-mono); font-size: var(--text-mono); }

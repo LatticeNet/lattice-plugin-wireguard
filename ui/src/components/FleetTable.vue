@@ -5,8 +5,10 @@
  * under it need not repeat it. A column shows only when some node reports a
  * value for it; on a fleet where none does, the head says which left and why.
  *
- * A row has one click target, the node's panel, and one menu, whose Plan
- * item says under its label why it is disabled (touch has no tooltip). The
+ * A row has one click target, the node's panel. A mesh-ready row has one
+ * menu, with Plan; a row with nothing to plan has no menu, and its actions
+ * cell says so in words, while its group row says what it lacks. With no
+ * row to plan on the page the actions column is left out. The
  * columns stay at every width; below 720px the node column pins to the left
  * edge and the table scrolls sideways under it, unless only the node and its
  * agent are left, when the table fits the frame.
@@ -54,8 +56,10 @@ const emit = defineEmits<{
  * stops scrolling sideways and the node column takes the room the dropped
  * columns left instead of a pinned 38vw sliver. */
 const fits = computed(() => !props.columns.address && !props.columns.publicKey && !props.columns.endpoint);
-const columnCount = computed(() => 2 + (props.columns.address ? 1 : 0) + (props.columns.publicKey ? 1 : 0) + (props.columns.endpoint ? 1 : 0) + (props.canPlan ? 1 : 0));
-const minWidth = computed(() => fits.value ? 0 : 360 + (props.columns.address ? 150 : 0) + (props.columns.publicKey ? 170 : 0) + (props.columns.endpoint ? 220 : 0) + (props.canPlan ? 60 : 0));
+/* A menu only where it would hold something enabled: Plan, on a mesh-ready node, for a session that may plan. */
+const hasMenus = computed(() => props.canPlan && props.groups.some((group) => group.nodes.some((node) => readinessGap(node) === "ready")));
+const columnCount = computed(() => 2 + (props.columns.address ? 1 : 0) + (props.columns.publicKey ? 1 : 0) + (props.columns.endpoint ? 1 : 0) + (hasMenus.value ? 1 : 0));
+const minWidth = computed(() => fits.value ? 0 : 360 + (props.columns.address ? 150 : 0) + (props.columns.publicKey ? 170 : 0) + (props.columns.endpoint ? 220 : 0) + (hasMenus.value ? 120 : 0));
 
 function sortFor(key: NodeSortKey): SortState {
   if (props.sortKey !== key) return "none";
@@ -69,9 +73,10 @@ function lastSeen(value?: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function menuFor(node: WireGuardNode): MenuItem[] {
-  const gap = readinessGap(node);
-  return [{ key: "plan", label: "Plan configuration…", disabled: gap !== "ready", reason: gap !== "ready" ? `${readinessGapLabel(gap)}, so there is nothing to plan yet` : undefined }];
+const PLAN_MENU: MenuItem[] = [{ key: "plan", label: "Plan configuration…" }];
+
+function nothingToPlan(node: WireGuardNode): string {
+  return `${readinessGapLabel(readinessGap(node))}, so there is nothing to plan yet`;
 }
 
 /** What the gap means for the mesh, so the group row says it once for every member. */
@@ -110,7 +115,7 @@ function openRow(event: MouseEvent, nodeId: string): void {
       <PcTh v-if="columns.publicKey">Public key</PcTh>
       <PcTh v-if="columns.endpoint" sortable :sort="sortFor('endpoint')" @sort="emit('sort', 'endpoint')">Endpoint</PcTh>
       <PcTh sortable :sort="sortFor('status')" @sort="emit('sort', 'status')">Agent</PcTh>
-      <PcTh v-if="canPlan" actions><span class="pc-sr-only">Actions</span></PcTh>
+      <PcTh v-if="hasMenus" actions><span class="pc-sr-only">Actions</span></PcTh>
     </template>
 
     <tbody v-for="group in groups" :key="group.gap">
@@ -150,8 +155,9 @@ function openRow(event: MouseEvent, nodeId: string): void {
           <PcStateDot :tone="agentTone(node)" :label="agentState(node)" />
           <small>{{ seenLabel(node, now) }}</small>
         </PcTd>
-        <PcActionsCell v-if="canPlan">
-          <RowMenu :label="`Actions for ${displayName(node)}`" :items="menuFor(node)" @select="emit('plan', node)" />
+        <PcActionsCell v-if="hasMenus">
+          <RowMenu v-if="readinessGap(node) === 'ready'" :label="`Actions for ${displayName(node)}`" :items="PLAN_MENU" @select="emit('plan', node)" />
+          <span v-else class="wg-row-reason" :title="nothingToPlan(node)">nothing to plan</span>
         </PcActionsCell>
       </PcRow>
     </tbody>

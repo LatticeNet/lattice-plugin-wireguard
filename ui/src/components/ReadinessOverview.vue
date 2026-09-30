@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * The Overview: why the mesh cannot form and the step that changes it, then
- * one readiness bar in place of four equal tiles. The bar splits the fleet
+ * one readiness bar in place of four equal tiles. Only the first item's first
+ * action is filled: one primary on the screen, the step that matters most. The bar splits the fleet
  * into ready, one half reported, and nothing reported, and prints each count
  * beside its swatch, so colour is never the only carrier. Agent liveness is a
  * separate line under it: an agent online says nothing about the mesh.
@@ -25,14 +26,14 @@ const emit = defineEmits<{ (event: "act", kind: AttentionActionKind): void }>();
   <section v-if="items.length" class="wg-attention" aria-labelledby="wg-attention-title">
     <h2 id="wg-attention-title" class="pc-sr-only">Why the mesh cannot form</h2>
     <ul>
-      <li v-for="item in items" :key="item.key" :data-tone="item.tone">
+      <li v-for="(item, itemIndex) in items" :key="item.key" :data-tone="item.tone">
         <div class="wg-attention-copy">
           <strong>{{ item.claim }}</strong>
           <span>{{ item.proof }}</span>
         </div>
         <div class="wg-attention-actions">
           <template v-for="(action, index) in item.actions" :key="action.kind">
-            <PcButton v-if="action.kind !== 'tasks' || canNavigate" compact :variant="index === 0 ? 'primary' : 'secondary'" @click="emit('act', action.kind)">{{ action.label }}</PcButton>
+            <PcButton v-if="action.kind !== 'tasks' || canNavigate" compact :variant="itemIndex === 0 && index === 0 ? 'primary' : 'secondary'" @click="emit('act', action.kind)">{{ action.label }}</PcButton>
           </template>
         </div>
       </li>
