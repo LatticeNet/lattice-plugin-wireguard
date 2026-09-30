@@ -13,13 +13,22 @@ base Dashboard has no WireGuard page of its own.
 
 ## Operator surface
 
-- Fleet readiness: address, public key, endpoint, online state and last check-in
-  for every node the session may read. A node is mesh-ready once the control
-  plane holds both its WireGuard address and its public key, and the page says
-  which of the two is missing rather than printing a zero.
-- Mesh membership for one selected node: the peers this session can see and the
-  `/32` or `/128` host route each is pinned to in `AllowedIPs`.
-- Per-node listen port, and plan creation, which files a pending approval.
+The page has three layers in one tab row. Overview opens with why the mesh
+cannot form (on a fleet where no agent reports a WireGuard address or key:
+"0 of 34 ready: 34 report no WireGuard address or public key") and the step
+that changes it, then one readiness bar split into ready, one half reported
+and nothing reported. Agent liveness is a separate count: an agent online says
+nothing about the mesh. Fleet lists every node the session may read, grouped
+by what it lacks; a column shows only when some node reports a value for it.
+Mesh lists the ready nodes with the host route each is pinned to in
+`AllowedIPs`.
+
+A row opens the node in a side panel: the interface as reported, its peers,
+and Plan, which asks for the listen port and files a pending approval. When
+Plan is disabled, the panel and the row menu say why beside it. The layer,
+the open node and the Fleet search live in the console address through the
+page-state contract (design 22), so a reload or a pasted link lands on the
+same panel. A failed read shows no counts.
 
 The page does not render a `wg0.conf`. The control plane renders the one that
 gets applied, and it decides fields this plugin never receives (the interface
@@ -69,8 +78,13 @@ iframe and speaks the real bridge protocol at it, with the frame sized to fill
 the console's main region the way the dashboard sizes it. There is no `dev`
 script in `ui/package.json`, so start it with `npx vite --open /dev.html` from
 `ui`. The bar switches data (`production`, `rich`, `empty`, `failing`), width
-(1440, 2423, 375) and theme; `?q=lens=mesh&expand=node-hkg-edge-01` in the
-harness URL passes a document query to the plugin.
+(1440, 2423, 375) and theme. Every other key in the harness URL is the
+plugin's page state, sent in init the way the console sends it:
+`?scenario=rich&view=fleet&open=node_metix-dmit-1` opens that node's panel on
+the Fleet layer, and a reload lands in the same place. `readonly=1` grants the
+read method only, `oldhost=1` plays a console that keeps no page state, and
+`plugin=lens%3Dmesh` passes a document query to the plugin the way an old
+link did.
 
 The page is built on the shared plugin chassis, `@latticenet/plugin-bridge/chassis`
 (see `docs/design-plugin-chassis.md` in the `lattice` repo). Until the bridge

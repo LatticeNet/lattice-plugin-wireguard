@@ -1,20 +1,14 @@
+import type { AgentCounts } from "./readiness";
 import { hostRoute, type MeshReadiness, type WireGuardNode } from "./wireguardModel";
 
 /**
- * What the fleet lens does with the node list before it is drawn: the lens
- * names, the search, the page arithmetic and the proof line. DOM-free, so the
- * tests run without jsdom and the template stays a template.
+ * What the Fleet layer does with the node list before it is drawn: the
+ * search, the page arithmetic and the proof line. DOM-free, so the tests run
+ * without jsdom and the template stays a template.
  */
 
-export type Lens = "fleet" | "mesh";
-
-/** The lens the document query names; anything unknown is the fleet. */
-export function lensFrom(value: string | null | undefined): Lens {
-  return value === "mesh" ? "mesh" : "fleet";
-}
-
-/** Lines paginates its fleet at 25 groups a page; the same rhythm here. */
-export const PAGE_SIZE = 25;
+/** 50 rows is a screen and a half at 40px, and holds the whole fleet today; the pager takes over past it. */
+export const PAGE_SIZE = 50;
 
 /**
  * The search covers what the placeholder promises: node name and id, the
@@ -53,19 +47,35 @@ export function formatClock(date: Date, locale?: string): string {
   return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(date);
 }
 
+export interface ProofInput {
+  readiness: MeshReadiness;
+  agents: AgentCounts;
+  /** When the last good read landed; absent until one has. */
+  observedAt: Date | undefined;
+  /** Why the newest read failed; empty when it did not. */
+  error: string;
+  locale?: string;
+}
+
 /**
  * The proof line under the header: when the fleet was last read, how many
- * nodes answered, how many of them are mesh-ready and how many of those are
- * online. No timer runs behind it; the time stays true for as long as the tab
- * is open because it names the read, not the present.
+ * nodes answered, how many agents are online and how many nodes are
+ * mesh-ready. Agents online and mesh-ready are two facts and are counted
+ * apart. No timer runs behind it; the time names the read, not the present.
+ * A read that failed with nothing loaded states no count at all, and one that
+ * failed after a good read says the counts are that read's.
  */
-export function proofSegments(readiness: MeshReadiness, observedAt: Date | undefined, locale?: string): string[] {
-  return [
-    observedAt ? `observed at ${formatClock(observedAt, locale)}` : "not observed yet",
+export function proofSegments(input: ProofInput): string[] {
+  const { readiness, agents, observedAt, error, locale } = input;
+  if (!observedAt) return error ? [`not read: ${error}`] : ["reading the fleet"];
+  const counts = [
     `${readiness.total} ${readiness.total === 1 ? "node" : "nodes"}`,
+    `${agents.online} ${agents.online === 1 ? "agent" : "agents"} online`,
+    ...(agents.disabled ? [`${agents.disabled} disabled`] : []),
     `${readiness.ready} mesh-ready`,
-    `${readiness.onlineReady} online`,
   ];
+  if (error) return [`last good read at ${formatClock(observedAt, locale)}`, ...counts, "refresh failed"];
+  return [`observed at ${formatClock(observedAt, locale)}`, ...counts];
 }
 
 /** The node's display name: the agent's name, or its id when it reported none. */
@@ -81,19 +91,6 @@ export function agentState(node: WireGuardNode): AgentState {
   return node.online ? "online" : "offline";
 }
 
-/** The mesh tile's title: name, state word, address, and what a click does. */
-export function meshTileTitle(node: WireGuardNode): string {
-  return `${displayName(node)}, ${agentState(node)}, reported ${node.address}. Open it in the fleet list.`;
-}
-
-/**
- * The id line of a peer row folded under a node. It leads with the owner, so
- * a peer still says whose it is after the node row has scrolled off the top.
- */
-export function peerSubline(owner: WireGuardNode, peer: WireGuardNode): string {
-  return `peer of ${displayName(owner)} · ${peer.node_id}`;
-}
-
 export interface FleetNotice {
   tone: "danger" | "warning";
   title: string;
@@ -106,5 +103,5 @@ export function fleetNotice(state: { bootError: string; error: string; loaded: n
   if (state.bootError) return { tone: "danger", title: "This page has no console session", dismissible: false };
   if (!state.error) return undefined;
   if (state.loaded > 0) return { tone: "warning", title: "The fleet below is the last good read, not the current one", dismissible: true };
-  return { tone: "danger", title: "The fleet could not be refreshed", dismissible: false };
+  return { tone: "danger", title: "The fleet could not be read", dismissible: false };
 }

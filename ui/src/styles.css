@@ -6,9 +6,10 @@
  * in main.ts. The chassis declares the 42 published token names as fallbacks
  * and derives the rest (`--pc-*`); this sheet declares no scale of its own.
  *
- * What is left here is WireGuard's own: the readiness grid on the Mesh lens,
- * the facts list and caveat under an open node, and the plan form. Every value
- * is a published token or a chassis derivation.
+ * What is left here is WireGuard's own: the Overview's attention list and
+ * readiness bar, the fleet's group rows and row target, the node panel's
+ * facts and caveat, the row menu, and the plan form. Every value is a
+ * published token or a chassis derivation.
  *
  * The frame is a viewport: the host sizes it to fill the console's main
  * region and this document scrolls inside it, so the chassis's sticky table
@@ -23,38 +24,7 @@
 * { box-sizing: border-box; }
 body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--background); }
 
-/* ── Mesh lens: the readiness grid ──────────────────────────────────────── */
-.mesh { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-3); padding: var(--space-4); background: var(--pc-group-surface); }
-.mesh-core, .mesh-peer { display: flex; min-height: 76px; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3) var(--space-2); color: var(--foreground); background: var(--card); font: inherit; text-align: center; }
-.mesh-core { color: var(--primary-foreground); border-color: var(--primary); background: var(--primary); }
-.mesh-core strong, .mesh-peer strong { max-width: 100%; overflow: hidden; font-size: var(--pc-text-xs); font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-/* The core tile's one sentence is the point of the lens, so it wraps; the
-   tile is a block, not a table row. A peer's address stays on one line and
-   the tile's title carries it in full. */
-.mesh-core span { font-family: var(--font-mono); font-size: var(--pc-text-label); line-height: 1.4; opacity: 0.85; }
-.mesh-peer small { max-width: 100%; overflow: hidden; font-family: var(--font-mono); font-size: var(--pc-text-label); opacity: 0.72; text-overflow: ellipsis; white-space: nowrap; }
-.mesh-peer { cursor: pointer; transition: border-color var(--pc-dur) var(--pc-ease), background-color var(--pc-dur) var(--pc-ease); }
-.mesh-peer:hover { border-color: var(--primary); background: var(--pc-hover-solid); }
-/* The agent state in the dot form the fleet table uses: the disc and the word. */
-.mesh-peer .pc-state-dot { margin-top: 2px; }
-
-/* ── The open node's fold: row, detail and peers as one attached block ──── */
-/* The chassis's open surface (muted 40% over transparent), mixed opaque so the
-   sticky name and actions cells of a peer row do not let other rows show
-   through while the wrap scrolls sideways. */
-.pc-table .peer-row > td { background-color: color-mix(in oklab, var(--muted) 40%, var(--card)); }
-/* In the stacked form the chassis paints a row's surface on the tr, as it does for group rows. */
-.pc-table[data-stacked="true"] .peer-row { background-color: color-mix(in oklab, var(--muted) 40%, var(--card)); }
-
-/* What the fleet is missing, counted. "Ready nodes 0 / 35" on its own tells an
-   operator nothing about which half of the pair has not arrived. */
-.readiness-breakdown { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.readiness-breakdown li { display: inline-flex; align-items: baseline; gap: var(--space-1); border: 1px solid var(--border); border-radius: 999px; padding: var(--space-1) var(--space-3); font-size: var(--pc-text-xs); }
-.readiness-breakdown strong { color: var(--foreground); font-size: var(--pc-text-sm); font-variant-numeric: tabular-nums; }
-
-/* ── The open node: facts and the mesh caveat, in place under its row ───── */
-.node-detail { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-4); padding-top: var(--space-3); font-size: var(--pc-text-sm); }
-.node-detail h3 { margin: 0 0 var(--space-2); color: var(--muted-foreground); font-size: var(--pc-text-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+/* ── The node panel: facts, readiness, peers and the caveat ─────────────── */
 /* Grid, not flex. A flex row keeps its automatic minimum size, so a long value
    with `white-space: nowrap` pushed straight through the right edge of the card
    no matter what max-width said. Two zero-floor tracks cannot overflow. */
@@ -86,8 +56,112 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 .plan-document { max-height: 380px; overflow: auto; margin: 0; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--foreground); background: color-mix(in oklab, var(--muted) 70%, var(--card)); font-family: var(--font-mono); font-size: var(--text-mono); line-height: 1.55; white-space: pre; }
 
 @media (max-width: 720px) {
-  .node-detail { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr; }
   .facts dt { padding-bottom: 0; border-bottom: 0; }
   .facts dd { text-align: left; }
+}
+
+/* ── Overview: why the mesh cannot form, then one readiness bar ─────────── */
+
+.wg-overview { display: flex; flex-direction: column; gap: var(--space-4); }
+.wg-attention { overflow: clip; border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--card); }
+.wg-attention ul { margin: 0; padding: 0; list-style: none; }
+.wg-attention li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-5); padding: var(--space-4); border-bottom: 1px solid var(--pc-hairline); box-shadow: inset 3px 0 0 var(--muted-foreground); }
+.wg-attention li:last-child { border-bottom: 0; }
+.wg-attention li[data-tone="danger"] { box-shadow: inset 3px 0 0 var(--destructive); }
+.wg-attention li[data-tone="warning"] { box-shadow: inset 3px 0 0 var(--warning); }
+.wg-attention li[data-tone="info"] { box-shadow: inset 3px 0 0 var(--info); }
+.wg-attention-copy { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
+.wg-attention-copy strong { font-size: var(--pc-text-lg); font-weight: 650; line-height: 1.35; }
+.wg-attention-copy span { max-width: 78ch; color: var(--muted-foreground); font-size: var(--pc-text-sm); line-height: 1.55; }
+.wg-attention-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+
+/* The bar is the fleet: ready, one half reported, nothing reported. Each
+   count is printed in the legend beside its swatch. */
+.wg-bar-body { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.wg-bar { display: flex; height: 14px; overflow: hidden; border-radius: 4px; background: var(--pc-neutral-soft); }
+.wg-bar > span { height: 100%; background: var(--wg-segment); }
+.wg-bar > span + span { box-shadow: inset 1px 0 0 var(--card); }
+/* The state-dot inks, not the fills: the fills fall under 3:1 on a light card
+   (warning 2.5, a light grey 2.3), and a segment is a mark the operator reads. */
+[data-segment="ready"] { --wg-segment: var(--success-text); }
+[data-segment="partial"] { --wg-segment: var(--warning-text); }
+[data-segment="missing"] { --wg-segment: color-mix(in oklab, var(--muted-foreground) 75%, var(--card)); }
+.wg-bar-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); margin: 0; padding: 0; list-style: none; color: var(--muted-foreground); font-size: var(--pc-text-sm); }
+.wg-bar-legend li { display: inline-flex; align-items: baseline; gap: 6px; }
+.wg-bar-legend li::before { width: 10px; height: 10px; align-self: center; border-radius: 2px; background: var(--wg-segment); content: ""; }
+.wg-bar-legend strong { color: var(--foreground); font-size: var(--pc-text-lg); font-variant-numeric: tabular-nums; }
+.wg-agents { margin: 0; color: var(--muted-foreground); font-size: var(--pc-text-xs); }
+.wg-agents strong { color: var(--foreground); font-variant-numeric: tabular-nums; }
+
+/* ── Fleet and Mesh: one click target per row ───────────────────────────── */
+
+/* chassis-workaround: sr-only text escapes the table scroller.
+   The wrap is the containing block for anything absolutely positioned in a
+   cell, so screen-reader text stays inside the sideways scroll instead of
+   widening the page. Remove this rule once plugin-bridge's chassis.css gives
+   .pc-table-wrap `position: relative` itself. */
+.pc-table-wrap { position: relative; }
+.wg-click-row { cursor: pointer; }
+.pc-table .wg-row-open { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 0; border-radius: var(--radius-sm); padding: 0; color: inherit; background: transparent; font: inherit; font-size: var(--text-body); font-weight: 620; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.wg-click-row:hover .wg-row-open { text-decoration: underline; text-decoration-color: var(--muted-foreground); text-underline-offset: 3px; }
+.pc-table tr[data-selected="true"] > td.pc-name, .pc-table tr[data-selected="true"] > td.pc-actions { background-color: color-mix(in oklab, var(--primary) 8%, var(--card)); }
+.wg-absent { color: var(--muted-foreground); font-style: italic; }
+.wg-group-note { height: auto; }
+.pc-table .wg-group-note .pc-group-summary { display: block; white-space: normal; }
+.wg-mono { font-family: var(--font-mono); font-size: var(--text-mono); }
+
+/* ── The node panel ─────────────────────────────────────────────────────── */
+
+.wg-node-panel .pc-side-panel { width: min(560px, 100%); }
+.wg-node { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--pc-text-sm); }
+.wg-node h3 { margin: 0 0 var(--space-2); color: var(--muted-foreground); font-size: var(--pc-text-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.wg-node-action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+.wg-inline-reason { flex: 1 1 220px; margin: 0; color: var(--muted-foreground); font-size: var(--pc-text-xs); line-height: 1.5; }
+.wg-readiness-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.wg-peers { display: grid; gap: 2px; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
+.wg-peers li { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: var(--space-2); padding: 3px 0; border-bottom: 1px solid var(--pc-hairline); color: var(--foreground); }
+.wg-peers li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── The row menu ───────────────────────────────────────────────────────── */
+
+/* Teleported to the body and fixed against the frame, so neither the table's
+   scroll wrap nor its pinned columns can clip it. */
+.rm-menu { position: fixed; z-index: var(--pc-z-modal); box-sizing: border-box; min-width: 200px; max-width: min(320px, calc(100vw - 8px)); padding: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--foreground); background: var(--card); box-shadow: var(--shadow-overlay); font-size: var(--pc-text-sm); }
+.rm-menu:focus { outline: none; }
+.rm-item { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: 2px; border: 0; border-radius: var(--radius-sm); padding: 7px var(--space-2); color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.rm-item:hover:not([aria-disabled="true"]), .rm-item:focus-visible { outline: none; background: var(--muted); }
+.rm-item[aria-disabled="true"] { color: var(--muted-foreground); cursor: not-allowed; }
+.rm-item small { color: var(--muted-foreground); font-size: var(--pc-text-xs); line-height: 1.4; }
+.rm-item[data-danger="true"] { color: var(--pc-danger-text); }
+.rm-sep { height: 1px; margin: var(--space-1) 0; background: var(--border); }
+
+/* ── Narrow frames ──────────────────────────────────────────────────────── */
+
+@media (max-width: 720px) {
+  .wg-fleet-table th.pc-name, .wg-fleet-table td.pc-name, .wg-mesh-table th.pc-name, .wg-mesh-table td.pc-name { width: 38vw; min-width: 0; max-width: 38vw; }
+  /* Node and agent only: the table fits the frame instead of scrolling. The
+     node column takes what the agent and the menu leave (width 100% with
+     max-width 0 is the table idiom for "the rest"). Names, the group label
+     and the last-seen time wrap rather than ellipsize, so no row loses the
+     part of its name that tells it from its neighbour ([Metix]-AWS-HKG and
+     [Metix]-AWS-FRA); the node id stays one truncated line, the panel has it. */
+  .wg-fleet-table.wg-fleet-fit th.pc-name, .wg-fleet-table.wg-fleet-fit td.pc-name { width: 100%; max-width: 0; }
+  .wg-fleet-table.wg-fleet-fit .wg-row-open, .wg-fleet-table.wg-fleet-fit .pc-group-row .pc-name strong, .wg-fleet-table.wg-fleet-fit .pc-group-row td.pc-name small { overflow-wrap: anywhere; white-space: normal; }
+  /* 13ch holds "Sep 30, 2026," so the time takes one more line, not four. */
+  .wg-fleet-table.wg-fleet-fit td:not(.pc-name) small { width: auto; min-width: 13ch; white-space: normal; }
+}
+
+@media (max-width: 620px) {
+  /* chassis-workaround: layer tabs wrap onto two rows at 375.
+     One row of layer tabs that scrolls sideways if a frame is narrower than
+     the labels need (design 23 section 3.4). Remove the two .pc-lens-tab*
+     rules once plugin-bridge's chassis.css keeps .pc-lens-tabs on one
+     scrolling row itself. */
+  .pc-toolbar .pc-lens-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .pc-toolbar .pc-lens-tab { padding-inline: var(--space-2); }
+  .wg-attention li { grid-template-columns: minmax(0, 1fr); }
+  .wg-attention-actions { justify-content: flex-start; }
+  .wg-peers li { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .wg-peers li span:last-child { display: none; }
 }

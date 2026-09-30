@@ -1,20 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { agentState, filterNodes, fleetNotice, formatClock, lensFrom, matchesSearch, meshTileTitle, pageCount, pageOf, pageSlice, peerSubline, proofSegments } from "./fleetView";
+import { agentState, filterNodes, fleetNotice, formatClock, matchesSearch, pageCount, pageOf, pageSlice, proofSegments } from "./fleetView";
+import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
 function node(overrides: Partial<WireGuardNode> = {}): WireGuardNode {
   return { node_id: "node-hkg-edge-01", name: "hkg-edge-01", online: true, configuration: "missing", ...overrides };
 }
-
-describe("lensFrom", () => {
-  it("names the mesh lens and falls back to the fleet for anything else", () => {
-    expect(lensFrom("mesh")).toBe("mesh");
-    expect(lensFrom("fleet")).toBe("fleet");
-    expect(lensFrom("devices")).toBe("fleet");
-    expect(lensFrom(null)).toBe("fleet");
-  });
-});
 
 describe("matchesSearch", () => {
   const ready = node({
@@ -54,24 +46,24 @@ describe("matchesSearch", () => {
 describe("paging", () => {
   it("never reports fewer than one page", () => {
     expect(pageCount(0)).toBe(1);
-    expect(pageCount(25)).toBe(1);
-    expect(pageCount(26)).toBe(2);
-    expect(pageCount(35)).toBe(2);
+    expect(pageCount(50)).toBe(1);
+    expect(pageCount(51)).toBe(2);
+    expect(pageCount(34)).toBe(1);
   });
 
   it("finds the page that holds an index and treats a missing item as page one", () => {
     expect(pageOf(0)).toBe(1);
-    expect(pageOf(24)).toBe(1);
-    expect(pageOf(25)).toBe(2);
+    expect(pageOf(49)).toBe(1);
+    expect(pageOf(50)).toBe(2);
     expect(pageOf(-1)).toBe(1);
     expect(pageOf(7, 5)).toBe(2);
   });
 
   it("slices the page and clamps a page below one", () => {
-    const items = Array.from({ length: 35 }, (_, index) => index);
-    expect(pageSlice(items, 1)).toHaveLength(25);
-    expect(pageSlice(items, 2)).toEqual(items.slice(25));
-    expect(pageSlice(items, 0)).toEqual(items.slice(0, 25));
+    const items = Array.from({ length: 70 }, (_, index) => index);
+    expect(pageSlice(items, 1)).toHaveLength(50);
+    expect(pageSlice(items, 2)).toEqual(items.slice(50));
+    expect(pageSlice(items, 0)).toEqual(items.slice(0, 50));
     expect(pageSlice(items, 3)).toEqual([]);
   });
 });
@@ -82,19 +74,35 @@ describe("proof line", () => {
     expect(formatClock(new Date(2026, 0, 1, 0, 0, 0), "en-GB")).toBe("00:00:00");
   });
 
-  it("names the read, the population, the ready count and the online count", () => {
+  it("counts agents online and mesh-ready nodes apart", () => {
     const nodes = [
       node({ address: "10.66.0.1", public_key: "k".repeat(44), online: true }),
       node({ node_id: "n2", address: "10.66.0.2", public_key: "k".repeat(44), online: false }),
-      node({ node_id: "n3" }),
+      node({ node_id: "n3", online: true }),
+      node({ node_id: "n4", online: true, disabled: true }),
     ];
-    const segments = proofSegments(summarizeReadiness(nodes), new Date(2026, 7, 18, 23, 21, 14), "en-GB");
-    expect(segments).toEqual(["observed at 23:21:14", "3 nodes", "2 mesh-ready", "1 online"]);
+    const segments = proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: new Date(2026, 7, 18, 23, 21, 14), error: "", locale: "en-GB" });
+    expect(segments).toEqual(["observed at 23:21:14", "4 nodes", "2 agents online", "1 disabled", "2 mesh-ready"]);
   });
 
-  it("says so before the first read has landed, and uses the singular for one node", () => {
-    expect(proofSegments(summarizeReadiness([]), undefined)[0]).toBe("not observed yet");
-    expect(proofSegments(summarizeReadiness([node()]), undefined)[1]).toBe("1 node");
+  it("prints production's fleet the way production has it: agents online, nothing ready", () => {
+    const nodes = Array.from({ length: 34 }, (_, index) => node({ node_id: `n${index}`, online: index > 1 }));
+    const segments = proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: new Date(2026, 8, 30, 9, 23, 44), error: "", locale: "en-GB" });
+    expect(segments).toEqual(["observed at 09:23:44", "34 nodes", "32 agents online", "0 mesh-ready"]);
+  });
+
+  it("states no count when a read failed with nothing loaded, and names the read the counts come from after one landed", () => {
+    const empty = { readiness: summarizeReadiness([]), agents: agentCounts([]) };
+    expect(proofSegments({ ...empty, observedAt: undefined, error: "503 service unavailable" })).toEqual(["not read: 503 service unavailable"]);
+    expect(proofSegments({ ...empty, observedAt: undefined, error: "" })).toEqual(["reading the fleet"]);
+    const nodes = [node({ online: true })];
+    expect(proofSegments({ readiness: summarizeReadiness(nodes), agents: agentCounts(nodes), observedAt: new Date(2026, 0, 1, 8, 0, 0), error: "503", locale: "en-GB" })).toEqual([
+      "last good read at 08:00:00",
+      "1 node",
+      "1 agent online",
+      "0 mesh-ready",
+      "refresh failed",
+    ]);
   });
 });
 
@@ -114,7 +122,7 @@ describe("the page notice", () => {
 
     const failed = fleetNotice({ bootError: "", error: "503", loaded: 0 })!;
     expect(failed.tone).toBe("danger");
-    expect(failed.title).toBe("The fleet could not be refreshed");
+    expect(failed.title).toBe("The fleet could not be read");
     expect(failed.dismissible).toBe(false);
   });
 
@@ -127,21 +135,10 @@ describe("the page notice", () => {
 });
 
 describe("the agent state word", () => {
-  it("is printed wherever the dot is: mesh tiles carry it in the title as well", () => {
+  it("is printed wherever the dot is", () => {
     const ready = { address: "10.66.0.7", public_key: "k".repeat(44) };
     expect(agentState(node({ ...ready, online: true }))).toBe("online");
     expect(agentState(node({ ...ready, online: false }))).toBe("offline");
     expect(agentState(node({ ...ready, online: true, disabled: true }))).toBe("disabled");
-    expect(meshTileTitle(node({ ...ready, online: false }))).toBe("hkg-edge-01, offline, reported 10.66.0.7. Open it in the fleet list.");
-    expect(meshTileTitle(node({ ...ready, name: "", online: true }))).toBe("node-hkg-edge-01, online, reported 10.66.0.7. Open it in the fleet list.");
-  });
-});
-
-describe("a peer row names its owner", () => {
-  it("leads the id line with the node it folds under, so the owner survives when it has scrolled off", () => {
-    const owner = node({ node_id: "node-ams-hub-01", name: "ams-hub-01" });
-    const peer = node({ node_id: "node-vie-relay-01", name: "vie-relay-01" });
-    expect(peerSubline(owner, peer)).toBe("peer of ams-hub-01 · node-vie-relay-01");
-    expect(peerSubline(node({ node_id: "node-x", name: "" }), peer)).toBe("peer of node-x · node-vie-relay-01");
   });
 });

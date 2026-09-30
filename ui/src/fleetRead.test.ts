@@ -89,7 +89,7 @@ describe("useFleetRead", () => {
     settlers[0].reject(new Error("upstream refused networks/overview: 503 service unavailable"));
     await first;
     expect(fleet.loading.value).toBe(false);
-    expect(notice(fleet)).toEqual({ tone: "danger", title: "The fleet could not be refreshed", dismissible: false });
+    expect(notice(fleet)).toEqual({ tone: "danger", title: "The fleet could not be read", dismissible: false });
 
     const retry = fleet.refresh();
     // The in-flight window: the failure still stands, the retry is visibly
