@@ -9,6 +9,13 @@
  * the ready nodes as a compact list. A node opens in a side panel from any
  * layer, and the layer, the open node and the Fleet search live in the
  * console's address, so a reload or a pasted link lands on the same place.
+ *
+ * The page reads when it opens and when the operator presses Refresh, and
+ * never on a timer: a background read re-sorts the fleet and moves rows
+ * under the pointer, and the rows open a node and carry a menu. It reports
+ * no height either. The host frame is a viewport the host sizes itself and
+ * ignores the reported number (PluginFrameHost.vue), so measuring the
+ * document on every body resize bought nothing.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { CheckCircle2, Copy, FileCode2, KeyRound, Network, RefreshCw, Route, ShieldCheck, Spline } from "@lucide/vue";
@@ -32,7 +39,6 @@ import {
   PcSkeleton,
   PcToolbar,
   PcWorkspace,
-  overlayDepth,
   useOverlayEscape,
 } from "@latticenet/plugin-bridge/chassis";
 
@@ -257,9 +263,6 @@ function closePanel(): void {
   openId.value = "";
 }
 
-/* From 768px the panel sits beside the rows (styles.css); below, it is a modal sheet. */
-const PANEL_BESIDE_ROWS = "(min-width: 768px)";
-
 /* The segmented layer row scrolls sideways in a narrow frame; keep the
  * selected layer in it, again once a read lands, since the tab counts it
  * adds widen the row. */
@@ -276,7 +279,6 @@ async function call<T>(method: string, payload: unknown = {}): Promise<T> {
 async function refresh(): Promise<void> {
   if (!init.value) return;
   await readFleet();
-  await resize();
 }
 
 // ── plan ────────────────────────────────────────────────────────────────────
@@ -321,7 +323,6 @@ async function createPlan(): Promise<void> {
     );
   } finally {
     planning.value = false;
-    await resize();
   }
 }
 
@@ -360,8 +361,6 @@ function closeApproval(): void {
   copyFailed.value = false;
 }
 
-async function resize(): Promise<void> { await nextTick(); bridge?.resize(document.documentElement.scrollHeight); }
-
 // One document handler closes the top of the overlay stack on Escape; the
 // panel and the modals register themselves while open.
 useOverlayEscape();
@@ -372,24 +371,7 @@ function reloadFrame(): void {
   window.location.reload();
 }
 
-let observer: ResizeObserver | undefined;
-let poller: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-  observer = new ResizeObserver(() => { void resize(); });
-  observer.observe(document.body);
-  // The read pauses while a dialog is modal: the Plan form, the approval,
-  // or the panel below 768px. Beside the rows, the panel is part of the
-  // page and the read goes on.
-  poller = setInterval(() => {
-    const beside = Boolean(openId.value) && window.matchMedia(PANEL_BESIDE_ROWS).matches;
-    const modal = overlayDepth() - (beside ? 1 : 0);
-    if (!loading.value && modal === 0) void refresh();
-  }, 20_000);
-  void resize();
-});
 onBeforeUnmount(() => {
-  observer?.disconnect();
-  if (poller) clearInterval(poller);
   stopInitListener?.();
   stateSender?.dispose();
   bridge?.dispose();

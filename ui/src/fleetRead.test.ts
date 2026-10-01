@@ -123,23 +123,23 @@ describe("useFleetRead", () => {
     expect(notice(fleet)).toBeUndefined();
   });
 
-  it("a background poll that fails keeps the rows, and the next poll that lands clears the warning", async () => {
+  it("a Refresh that fails keeps the rows, and the next Refresh that lands clears the warning", async () => {
     const { fleet, settlers } = pendingRead();
     const first = fleet.refresh();
     settlers[0].resolve(ROWS);
     await first;
 
-    // The 20-second poller calls refresh() exactly as Try again does, and the
-    // poll only runs while the page is not loading, as on the page.
+    // Refresh and Try again both call refresh(), and only once the first
+    // read has landed, as on the page.
     const outcomes: boolean[] = [];
     for (const answer of ["fail", "fail", "land"] as const) {
       expect(fleet.loading.value).toBe(false);
-      const poll = fleet.refresh();
+      const read = fleet.refresh();
       expect(fleet.nodes.value).toEqual(ROWS);
       const settler = settlers[settlers.length - 1];
       if (answer === "fail") settler.reject(new Error("upstream refused networks/overview: 503 service unavailable"));
       else settler.resolve([ROWS[0]]);
-      outcomes.push(await poll);
+      outcomes.push(await read);
       expect(fleet.nodes.value.length).toBeGreaterThan(0);
       expect(emptyFleet(fleet)).toBe(false);
     }

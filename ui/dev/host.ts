@@ -24,7 +24,7 @@
  * the bar rather than followed.
  *
  * "refuse calls" turns every answer into a host error without reloading the
- * frame, so a poll or a retry that fails after a good read can be watched with
+ * frame, so a Refresh or a retry that fails after a good read can be watched with
  * the rows still standing. The "failing" scenario is the other case: nothing
  * ever lands, from the first read on.
  */
