@@ -1,4 +1,8 @@
 /**
+ * chassis-copy: the same file is in lattice-plugin-netguard and
+ * lattice-plugin-wireguard. It belongs in @latticenet/plugin-bridge/chassis
+ * beside the proof line; change both copies together until then.
+ *
  * A clock for relative labels ("observed 13s ago", "seen 2m ago"), and for
  * nothing else: it never reads data, which the page re-reads only when the
  * operator presses Refresh. It keeps an age true while the frame is on

@@ -1,4 +1,10 @@
 /**
+ * chassis-copy: the same file is in lattice-plugin-netguard and
+ * lattice-plugin-wireguard, and vpn-core and Sub-Store carry their own. It
+ * belongs in @latticenet/plugin-bridge/chassis as a pageState helper (the
+ * client already owns init); change every copy together until the chassis
+ * release that exports it, then delete them.
+ *
  * pageState.ts, where the page's layer, open object and search live between
  * reloads.
  *

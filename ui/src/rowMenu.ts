@@ -1,4 +1,9 @@
 /**
+ * chassis-copy: the same file is in lattice-plugin-netguard and
+ * lattice-plugin-wireguard. It belongs in @latticenet/plugin-bridge/chassis
+ * beside the RowMenu component; change both copies together until the
+ * chassis release that exports it, then delete them.
+ *
  * The row menu's model: which items it holds, in which order, and where the
  * arrow keys go. A row has one click target (its panel) and this one menu for
  * everything else (design 23 section 3.6). A disabled item stays in the list

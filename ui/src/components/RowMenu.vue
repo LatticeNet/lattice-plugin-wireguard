@@ -1,5 +1,10 @@
 <script setup lang="ts">
 /**
+ * chassis-copy: the same file is in lattice-plugin-netguard and
+ * lattice-plugin-wireguard, and vpn-core carries its own RowMenu. It belongs
+ * in @latticenet/plugin-bridge/chassis as a RowMenu component; change every
+ * copy together until the chassis release that exports it, then delete them.
+ *
  * One menu per row for everything the row click does not do.
  *
  * The trigger is always visible (a control that appears on hover does not
