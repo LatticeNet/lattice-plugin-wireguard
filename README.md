@@ -32,6 +32,19 @@ same panel. A failed read shows no counts. The page reads when it opens and
 when Refresh is pressed, never on a timer; one clock re-renders the relative
 ages every 5 seconds while the page is visible and stops while it is hidden.
 
+The page reports no height, so it is drawn for a console whose plugin frame
+is a viewport: lattice-dashboard 9e3d49d, first baked into server image
+`alpha-0.2.2a29`. That console sizes the frame itself and ignores
+`lattice.plugin.resize`. An older console, including the `v0.2.1` image that
+`compatibility.server` in the manifest still admits, sized the frame from
+the reported height and held it at its minimum, one window below the console
+header, until a report arrived. On such a host the frame stays one window
+tall and this page scrolls inside it. Nothing is cut off; NetGuard has run
+this way on those hosts since 0.1.0-alpha.15. A single report on first load
+would be worse there: the frame would keep the height of the first screen
+drawn, and a taller layer or panel would then scroll inside a frame that sits
+inside a scrolling page.
+
 The page does not render a `wg0.conf`. The control plane renders the one that
 gets applied, and it decides fields this plugin never receives (the interface
 prefix, PersistentKeepalive, MTU and DNS, and peers on nodes outside the
