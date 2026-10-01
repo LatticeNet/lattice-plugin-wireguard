@@ -28,7 +28,9 @@ and Plan, which asks for the listen port and files a pending approval. When
 Plan is disabled, the panel and the row menu say why beside it. The layer,
 the open node and the Fleet search live in the console address through the
 page-state contract (design 22), so a reload or a pasted link lands on the
-same panel. A failed read shows no counts.
+same panel. A failed read shows no counts. The page reads when it opens and
+when Refresh is pressed, never on a timer; one clock re-renders the relative
+ages every 5 seconds while the page is visible and stops while it is hidden.
 
 The page does not render a `wg0.conf`. The control plane renders the one that
 gets applied, and it decides fields this plugin never receives (the interface
