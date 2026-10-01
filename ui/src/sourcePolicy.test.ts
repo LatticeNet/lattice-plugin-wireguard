@@ -3,6 +3,9 @@
  * over every module rather than as a claim about one file. These are absence
  * checks on purpose: what the page does is covered by the model tests and the
  * rendered checks, and a test that a string is present passes on dead code.
+ * Both are cheap second checks. appReads.test.ts mounts the page and counts
+ * what it sends the host, which also catches a poll or a height report
+ * written under another name.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
