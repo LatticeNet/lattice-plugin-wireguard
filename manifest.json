@@ -9,9 +9,9 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.1",
   "publisher": "latticenet",
-  "signature_ed25519": "rKuGQTDJnFSOytp5470zcScooGSdAnx7T66Qz5r4g3NLuD/YTYrl4zkflYQJlz5QqlASSAsVxDhO2Vq4qVr5CA==",
+  "signature_ed25519": "",
   "bundle": {
     "format": "tar+gzip",
     "digest_sha256": "468e23f85be9c50de4b9d477f28d17428f52ff2a4de024379c8dd83db296b81e"
