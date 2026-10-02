@@ -1,9 +1,12 @@
 /**
  * Canned answers shaped like the wire, for looking at the plugin in a browser.
  *
- * The default scenario is the fleet the owner actually has: 35 nodes, none of
- * them mesh-ready, no public endpoints. That zero state is the primary
- * experience today, so it is the default here rather than an afterthought.
+ * The default scenario is the fleet the owner actually has on 2026-09-30:
+ * 34 nodes, 32 agents online, none of them mesh-ready, no public endpoints.
+ * That zero state is the primary experience today, so it is the default here
+ * rather than an afterthought. The counts are production's; the names are
+ * invented, shaped like the fleet's (owner tag in brackets, then provider
+ * and site), long enough to test the pinned node column at 375.
  *
  * Never imported by src/; the shipped bundle is built from index.html alone.
  */
@@ -11,14 +14,17 @@
 export type Scenario = "production" | "rich" | "empty" | "failing";
 
 const NAMES = [
-  "hkg-edge-01", "hkg-edge-02", "hkg-edge-03", "sin-edge-01", "sin-edge-02",
-  "nrt-edge-01", "nrt-edge-02", "icn-edge-01", "tpe-edge-01", "syd-edge-01",
-  "lax-exit-01", "lax-exit-02", "sjc-exit-01", "sea-exit-01", "ord-exit-01",
-  "iad-exit-01", "atl-exit-01", "dfw-exit-01", "yyz-exit-01", "gru-exit-01",
-  "fra-hub-01", "fra-hub-02", "ams-hub-01", "lhr-hub-01", "cdg-hub-01",
-  "waw-hub-01", "sto-hub-01", "hel-hub-01", "mad-hub-01", "mil-hub-01",
-  "dub-relay-01", "osl-relay-01", "zrh-relay-01", "vie-relay-01", "prg-relay-01",
+  "[Metix]-DMIT-1", "[Metix]-DMIT-2", "[Metix]-DMIT-3", "[Metix]-DMIT-4", "[Metix]-RackNerd-1",
+  "[Metix]-RackNerd-2", "[Metix]-Vultr-TYO", "[Metix]-Vultr-SGP", "[Metix]-AWS-HKG", "[Metix]-AWS-FRA",
+  "[Metix]-VDS-LAX", "[Metix]-VDS-SJC", "[Metix]-GCP-TPE",
+  "[cd]-homeserver", "[cd]-nas", "[cd]-build-1", "[cd]-build-2", "[cd]-lab-1", "[cd]-lab-2",
+  "[cd]-mac-air", "[cd]-pi-zero", "[cd]-Aaitr-HK", "[cd]-Aaitr-SH", "[cd]-NAT-GZ", "[cd]-NAT-BJ",
+  "[cd]-DMIT-LAX", "[cd]-Oracle-OSA", "[cd]-Oracle-SEL", "[cd]-Hetzner-HEL",
+  "[openjobs-vpn]-HK-1", "[openjobs-vpn]-HK-2", "[openjobs-vpn]-SG-1", "[OpenJobs-Data]-SZ", "[OpenJobs-Data]-SH",
 ];
+
+/** Production has 2 of 34 agents offline. */
+const OFFLINE = new Set(["[cd]-pi-zero", "[Metix]-DMIT-4"]);
 
 function key(seed: number): string {
   // Shaped like a base64 WireGuard public key. Public keys are not secret;
@@ -51,17 +57,22 @@ function build(scenario: Scenario): FixtureNode[] {
     const hasAddress = scenario === "rich" && index % 3 !== 2;
     const hasKey = scenario === "rich" && index % 4 !== 3;
     const configuration = hasAddress && hasKey ? "ready" : hasAddress || hasKey ? "partial" : "missing";
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const online = scenario === "rich" ? index % 6 !== 1 : !OFFLINE.has(name);
     return {
-      node_id: `node-${name}`,
+      node_id: `node_${slug}`,
       name,
       address: hasAddress ? `10.66.0.${index + 1}` : undefined,
       public_key: hasKey ? key(index + 1) : undefined,
-      endpoint: scenario === "rich" && index % 5 === 0 ? `${name}.example.invalid:51820` : undefined,
+      endpoint: scenario === "rich" && index % 5 === 0 ? `${slug}.example.invalid:51820` : undefined,
       listen_port: scenario === "rich" && index % 5 === 0 ? 51820 : undefined,
       public_ip: `203.0.113.${index + 1}`,
-      online: scenario === "rich" ? index % 6 !== 1 : index % 4 !== 0,
+      online,
       disabled: scenario === "rich" && index % 11 === 4,
-      last_seen: new Date(Date.UTC(2026, 7, 18, 9, index % 60)).toISOString(),
+      // Invented times, counted back from now so the relative ages read the
+      // way production's do: an online agent reported seconds ago, an
+      // offline one days ago.
+      last_seen: new Date(Date.now() - (online ? 15 + index * 7 : 6 * 86_400 + index * 3_600) * 1000).toISOString(),
       configuration,
     };
   });

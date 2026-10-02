@@ -1,58 +1,77 @@
 <script setup lang="ts">
+/**
+ * WireGuard: which fleet nodes can join the mesh, what each lacks, and the
+ * plan that an approved apply writes to one of them.
+ *
+ * Layered like every console area (design 22 section 2): Overview first,
+ * with why the mesh cannot form and the step that changes it, then one
+ * readiness bar; then Fleet, the nodes grouped by what they lack; then Mesh,
+ * the ready nodes as a compact list. A node opens in a side panel from any
+ * layer, and the layer, the open node and the Fleet search live in the
+ * console's address, so a reload or a pasted link lands on the same place.
+ *
+ * The page reads when it opens and when the operator presses Refresh, and
+ * never on a timer: a background read re-sorts the fleet and moves rows
+ * under the pointer, and the rows open a node and carry a menu. It reports
+ * no height either. The host frame is a viewport the host sizes itself and
+ * ignores the reported number (PluginFrameHost.vue), so measuring the
+ * document on every body resize bought nothing.
+ */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { CheckCircle2, Copy, FileCode2, KeyRound, Network, RefreshCw, Route, ShieldCheck, Spline } from "@lucide/vue";
 
 import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
 import {
-  PcActionsCell,
   PcButton,
   PcCount,
-  PcDetailRow,
   PcEmptyState,
-  PcKindChip,
   PcLensTab,
   PcLensTabs,
   PcModal,
-  PcNameCell,
   PcNotice,
   PcPageHeader,
   PcPagination,
   PcPanel,
   PcPanelHeader,
   PcProofLine,
-  PcRow,
   PcSearchField,
+  PcSidePanel,
   PcSkeleton,
-  PcStatCard,
-  PcStatStrip,
-  PcStateDot,
-  PcStatePill,
-  PcTable,
-  PcTd,
-  PcTh,
   PcToolbar,
   PcWorkspace,
-  overlayDepth,
-  useDocumentQueryState,
-  useExpandSet,
   useOverlayEscape,
-  type NameStatus,
-  type StateTone,
 } from "@latticenet/plugin-bridge/chassis";
 
+import FleetTable from "./components/FleetTable.vue";
+import MeshList from "./components/MeshList.vue";
+import NodeFacts from "./components/NodeFacts.vue";
+import ReadinessOverview from "./components/ReadinessOverview.vue";
+import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
-import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, lensFrom, meshTileTitle, pageCount, pageOf, pageSlice, peerSubline, proofSegments, type Lens } from "./fleetView";
+import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
+import { revealSelectedTab } from "./layerTabs";
+import { TASKS_ROUTE, postNavigate } from "./navigate";
+import {
+  channelFromHash,
+  createStateSender,
+  documentPageState,
+  listenForInitPageState,
+  stateMessage,
+  validPageState,
+  writeDocumentState,
+  type PageState,
+  type StateSender,
+} from "./pageState";
+import { agentCounts, gapGroups, meshAttention, missingColumnsNote, readinessBar, reportedColumns, type AttentionActionKind } from "./readiness";
+import { PANEL_TITLE, decodeWgState, encodeWgState, nodePanelState, type WgPageState, type WgView } from "./viewState";
 import {
   PRIVATE_KEY_PLACEHOLDER,
   hostRoute,
-  normalizedPort,
-  PLAN_UNKNOWNS,
   meshPeersFor,
   meshReadyNodes,
+  normalizedPort,
   readinessGap,
-  readinessGapLabel,
-  redactedKey,
   safeErrorMessage,
   sortNodes,
   summarizeReadiness,
@@ -76,86 +95,133 @@ const { nodes, observedAt, error, loading, refreshing, refresh: readFleet } = us
   async () => (await call<{ nodes: WireGuardNode[] }>("overview")).nodes ?? [],
 );
 
+// ── page state: layer, open node, Fleet search ──────────────────────────────
+//
+// The console's address carries them (pageState.ts). Before the host says
+// where the operator was, the page starts from its own document query: empty
+// under any real console, set only by a host that keeps no page state, or by
+// an old `?lens=mesh` link to the frame itself.
+const startState = decodeWgState(documentPageState());
+const view = ref<WgView>(startState.view);
+const search = ref(startState.q);
+const openId = ref(startState.open);
+
+function applyState(state: WgPageState): void {
+  view.value = state.view;
+  search.value = state.q;
+  openId.value = state.open;
+}
+
+const pageState = computed<PageState>(() => encodeWgState({ view: view.value, open: openId.value, q: search.value }));
+
+const channel = channelFromHash(window.location.hash);
+let hostState: PageState | undefined;
+let hostKeepsState = false;
+let stateSender: StateSender | undefined;
+/* Registered before the bridge client, so it hears init first (pageState.ts). */
+let stopInitListener: (() => void) | undefined = channel
+  ? listenForInitPageState(window, channel, (state) => {
+      hostState = state;
+    })
+  : undefined;
+
+/* The state goes out only after init, and only once the operator changes
+ * something: the page's reading of the address is not a reason to rewrite a
+ * pasted link. */
+function adoptPageState(): void {
+  hostKeepsState = hostState !== undefined;
+  if (hostState) applyState(decodeWgState(hostState));
+  stopInitListener?.();
+  stopInitListener = undefined;
+  stateSender?.dispose();
+  stateSender = createStateSender(sendState, { baseline: pageState.value });
+}
+
+function sendState(state: PageState): void {
+  const valid = validPageState(state);
+  if (!bridge || !channel || !valid) return;
+  window.parent.postMessage(stateMessage(bridge.nonce, valid), channel.hostOrigin);
+}
+
+function publishPageState(state: PageState): void {
+  if (!stateSender) return;
+  // A host that keeps no page state ignores the message; the frame's own
+  // query is then the only place the state can survive a frame reload.
+  if (!hostKeepsState) writeDocumentState(state);
+  stateSender.push(state);
+}
+watch(pageState, publishPageState);
+
 let bridge: BridgeClient | undefined;
 try {
   bridge = new BridgeClient({ window, expectedPluginId: "latticenet.wireguard", expectedRoutes: ["networks"], idPrefix: "wireguard" });
   bridge.init.then(async (value) => {
+    adoptPageState();
     init.value = value;
     await refresh();
   }).catch((cause) => {
+    // A handshake that never completes leaves the raw init listener
+    // registered for the life of the page; nothing will ever arrive for it.
+    stopInitListener?.();
+    stopInitListener = undefined;
     bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
   });
 } catch (cause) {
+  stopInitListener?.();
   bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
 }
 
 const canPlan = computed(() => canCall(init.value, SERVICE, "plan"));
 const readiness = computed(() => summarizeReadiness(nodes.value));
-// One definition of "ready" for the strip, the mesh grid, the peer count and
-// the rows folded under a node. The server's `configuration` field is the same
-// rule and is still what the table column reports.
+const agents = computed(() => agentCounts(nodes.value));
+// One definition of "ready" for the bar, the mesh list, the peer count and
+// the panel. The server's `configuration` field is the same rule.
 const readyNodes = computed(() => meshReadyNodes(nodes.value));
 const peerCount = computed(() => Math.max(0, readyNodes.value.length - 1));
-const proof = computed(() => proofSegments(readiness.value, observedAt.value));
+/** Ages on this page count from now; the instant each counts from is in a title. */
+const now = useNow();
+const proof = computed(() => proofSegments({ readiness: readiness.value, agents: agents.value, observedAt: observedAt.value, error: error.value, now: now.value }));
+const proofInstant = computed(() => proofTitle(observedAt.value));
 // A refresh that failed after a good read leaves the rows standing; the
 // notice then says the table is the last good read, not the current one, and
 // only that notice can be dismissed. With nothing loaded there is nothing
 // behind the notice to dismiss it into.
 const pageNotice = computed(() => fleetNotice({ bootError: bootError.value, error: error.value, loaded: nodes.value.length }));
+/** Counts only once a read has landed; a failed first read states none. */
+const landed = computed(() => observedAt.value !== undefined);
 
-// ── lens, search, expansion and page: the document query carries them ────
-// `?lens=mesh` and `?expand=<node_id>` survive a reload and can be shared; the
-// handshake fragment is never touched.
-const query = useDocumentQueryState();
-const lens = ref<Lens>(lensFrom(query.read("lens")[0]));
-const search = ref("");
-const expanded = useExpandSet(query.read("expand"));
-const page = ref(1);
+// ── Overview ────────────────────────────────────────────────────────────────
 
-function setLens(value: string): void {
-  lens.value = lensFrom(value);
-  query.write("lens", lens.value === "fleet" ? [] : [lens.value]);
+const attention = computed(() => meshAttention(nodes.value, readiness.value));
+const bar = computed(() => readinessBar(readiness.value));
+
+function onAttention(kind: AttentionActionKind): void {
+  if (kind === "tasks") {
+    if (channel) postNavigate(window, TASKS_ROUTE, channel.hostOrigin);
+    return;
+  }
+  view.value = kind;
 }
 
-function toggleNode(nodeID: string): void {
-  expanded.toggle(nodeID);
-  query.write("expand", [...expanded.own.value]);
-}
+// ── Fleet ───────────────────────────────────────────────────────────────────
 
-/** From the mesh grid: open one node in the fleet list, go to its page and bring its row into view. */
-async function showNode(nodeID: string): Promise<void> {
-  search.value = "";
-  expanded.open(nodeID);
-  query.write("expand", [...expanded.own.value]);
-  page.value = pageOf(sortedNodes.value.findIndex((node) => node.node_id === nodeID));
-  setLens("fleet");
-  await nextTick();
-  document.getElementById(`node-${nodeID}`)?.scrollIntoView({ block: "start" });
-}
-
-// ── fleet table ordering ─────────────────────────────────────────────────
 const sortKey = ref<NodeSortKey>("status");
 const sortDirection = ref<SortDirection>("asc");
 const sortedNodes = computed(() => sortNodes(nodes.value, sortKey.value, sortDirection.value));
 const visibleNodes = computed(() => filterNodes(sortedNodes.value, search.value));
+const columns = computed(() => reportedColumns(visibleNodes.value));
+const columnsNote = computed(() => missingColumnsNote(reportedColumns(nodes.value)));
+const page = ref(1);
 const pages = computed(() => pageCount(visibleNodes.value.length));
-const pagedNodes = computed(() => pageSlice(visibleNodes.value, page.value));
+const pagedGroups = computed(() => gapGroups(pageSlice(visibleNodes.value, page.value)));
+/* Group rows carry sizes over every node the search keeps, not just this page. */
+const groupTotals = computed(() => new Map(gapGroups(visibleNodes.value).map((group) => [group.gap, { count: group.nodes.length, online: group.online }])));
 const pageFrom = computed(() => (visibleNodes.value.length ? (page.value - 1) * PAGE_SIZE + 1 : 0));
 const pageTo = computed(() => Math.min(visibleNodes.value.length, page.value * PAGE_SIZE));
 const searching = computed(() => search.value.trim() !== "");
 
 watch(search, () => { page.value = 1; });
 watch(pages, (count) => { if (page.value > count) page.value = count; });
-
-const NODE_COLUMNS: Array<{ key: NodeSortKey | ""; label: string; name?: boolean }> = [
-  { key: "node", label: "Node", name: true },
-  { key: "address", label: "Address" },
-  { key: "", label: "Public key" },
-  { key: "endpoint", label: "Endpoint" },
-  { key: "configuration", label: "Configuration" },
-  { key: "status", label: "Agent" },
-];
-const COLUMN_COUNT = NODE_COLUMNS.length + 1;
 
 function toggleSort(key: NodeSortKey): void {
   if (sortKey.value === key) {
@@ -166,26 +232,42 @@ function toggleSort(key: NodeSortKey): void {
   sortDirection.value = "asc";
 }
 
-function ariaSort(key: NodeSortKey | ""): "ascending" | "descending" | "none" {
-  if (!key || sortKey.value !== key) return "none";
-  return sortDirection.value === "asc" ? "ascending" : "descending";
+// ── the node panel ──────────────────────────────────────────────────────────
+
+const openNode = computed(() => nodes.value.find((node) => node.node_id === openId.value));
+/*
+ * The panel says a node is not in the fleet only on a read that landed. While
+ * the newest read has failed it says the node was not read and offers the
+ * retry; a failed first read used to leave the skeleton spinning for good.
+ */
+const panelState = computed(() => nodePanelState({ found: Boolean(openNode.value), loading: loading.value, readFailed: Boolean(error.value) }));
+const panelTitle = computed(() => (openNode.value ? displayName(openNode.value) : PANEL_TITLE[panelState.value]));
+const panelDescription = computed(() => (openNode.value ? `${openNode.value.node_id} · agent ${agentState(openNode.value)}` : openId.value));
+
+function openPanel(nodeId: string): void {
+  openId.value = nodeId;
 }
 
-// ── row vocabulary ───────────────────────────────────────────────────────
-function configTone(node: WireGuardNode): StateTone {
-  return node.configuration === "ready" ? "healthy" : node.configuration === "partial" ? "warning" : "neutral";
+/**
+ * Close the panel. Focus goes back to the row of the node that is open now:
+ * with the panel non-modal a row click swaps the node, so that is not always
+ * the row that first opened it, and a panel the address opened (a reload, a
+ * pasted link) had no opener at all. By id, never through a selector: the
+ * id came from the address.
+ */
+const panelReturn = ref<HTMLElement | null>(null);
+function closePanel(): void {
+  const closed = openId.value;
+  const row = closed ? (document.getElementById(`node-${closed}`) ?? document.getElementById(`mesh-${closed}`)) : null;
+  panelReturn.value = row?.querySelector<HTMLElement>(".wg-row-open") ?? null;
+  openId.value = "";
 }
 
-/** The agent's state as the quiet dot at the name baseline; the evidence is the last report. */
-function agentStatus(node: WireGuardNode): NameStatus {
-  const state = agentState(node);
-  const tone: StateTone = state === "disabled" ? "neutral" : state === "online" ? "healthy" : "warning";
-  return { tone, label: state, title: `${state}, last seen ${formatDate(node.last_seen)}` };
-}
-
-function planTitle(node: WireGuardNode): string {
-  return readinessGap(node) !== "ready" ? readinessGapLabel(readinessGap(node)) : "Create configuration plan";
-}
+/* The segmented layer row scrolls sideways in a narrow frame; keep the
+ * selected layer in it, again once a read lands, since the tab counts it
+ * adds widen the row. */
+onMounted(() => revealSelectedTab(document.querySelector(".wg-layer-tabs")));
+watch([view, landed], () => revealSelectedTab(document.querySelector(".wg-layer-tabs")), { flush: "post" });
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   if (!bridge || !canCall(init.value, SERVICE, method)) {
@@ -196,13 +278,10 @@ async function call<T>(method: string, payload: unknown = {}): Promise<T> {
 
 async function refresh(): Promise<void> {
   if (!init.value) return;
-  const firstRead = observedAt.value === undefined;
-  const landed = await readFleet();
-  // A link that names a node (`?expand=`) lands on the page that holds it.
-  const [linked] = expanded.own.value;
-  if (landed && firstRead && linked) page.value = pageOf(sortedNodes.value.findIndex((node) => node.node_id === linked));
-  await resize();
+  await readFleet();
 }
+
+// ── plan ────────────────────────────────────────────────────────────────────
 
 const planNode = ref<WireGuardNode>();
 const listenPort = ref("");
@@ -215,6 +294,7 @@ interface Approval { id: string; node_id: string; plugin: string; action: string
 const approval = ref<Approval>();
 
 function openPlan(node: WireGuardNode): void {
+  if (readinessGap(node) !== "ready" || !canPlan.value) return;
   planNode.value = node;
   planError.value = "";
   listenPort.value = node.listen_port ? String(node.listen_port) : "51820";
@@ -228,10 +308,9 @@ async function createPlan(): Promise<void> {
     const port = normalizedPort(listenPort.value, planNode.value.listen_port || 51820);
     const created = await call<Approval>("plan", { node_id: planNode.value.node_id, listen_port: port });
     notice.value = `Approval ${created.id} created for ${created.node_id}. Nothing has been written to the node.`;
-    // Close the form and let its focus return to the Plan button settle before
-    // the review opens, so the review takes focus from that button and hands
-    // it back there on close. Swapping both in one tick would leave focus on
-    // the button behind the review's scrim.
+    // Close the form and let its focus return to the opener settle before
+    // the review opens, so the review takes focus from that control and
+    // hands it back there on close.
     planNode.value = undefined;
     await nextTick();
     approval.value = created;
@@ -244,7 +323,6 @@ async function createPlan(): Promise<void> {
     );
   } finally {
     planning.value = false;
-    await resize();
   }
 }
 
@@ -283,17 +361,8 @@ function closeApproval(): void {
   copyFailed.value = false;
 }
 
-function formatDate(value?: string): string {
-  if (!value) return "not reported";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "not reported";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
-
-async function resize(): Promise<void> { await nextTick(); bridge?.resize(document.documentElement.scrollHeight); }
-
 // One document handler closes the top of the overlay stack on Escape; the
-// modals register themselves while open.
+// panel and the modals register themselves while open.
 useOverlayEscape();
 
 const handshakeExpired = useHandshakeTimeout(init);
@@ -302,17 +371,9 @@ function reloadFrame(): void {
   window.location.reload();
 }
 
-let observer: ResizeObserver | undefined;
-let poller: ReturnType<typeof setInterval> | undefined;
-onMounted(() => {
-  observer = new ResizeObserver(() => { void resize(); });
-  observer.observe(document.body);
-  poller = setInterval(() => { if (!loading.value && overlayDepth() === 0) void refresh(); }, 20_000);
-  void resize();
-});
 onBeforeUnmount(() => {
-  observer?.disconnect();
-  if (poller) clearInterval(poller);
+  stopInitListener?.();
+  stateSender?.dispose();
   bridge?.dispose();
 });
 </script>
@@ -322,16 +383,16 @@ onBeforeUnmount(() => {
     <PcPageHeader
       title="WireGuard Networks"
       badge="WireGuard plugin"
-      description="Mesh readiness across the fleet. A configuration plan reaches a node only after you approve it, and no private key passes through this page."
-      :icon="Spline"
+      description="Which nodes can join the mesh and what each lacks. A configuration plan reaches a node only after you approve it."
     >
+      <template #icon><Spline :size="19" aria-hidden="true" /></template>
       <template #actions>
         <PcButton :busy="refreshing" :disabled="loading || !init" @click="refresh()">
           <template #icon><RefreshCw :size="15" aria-hidden="true" /></template>
           Refresh
         </PcButton>
       </template>
-      <template #proof><PcProofLine :segments="proof" :refreshing="refreshing" /></template>
+      <template #proof><PcProofLine :segments="proof" :refreshing="refreshing" :title="proofInstant" /></template>
     </PcPageHeader>
 
     <PcNotice
@@ -349,10 +410,25 @@ onBeforeUnmount(() => {
     </PcNotice>
     <PcNotice v-if="notice" tone="success" dismissible dismiss-label="Dismiss notice" @dismiss="notice = ''">{{ notice }}</PcNotice>
 
-    <PcNotice tone="info" title="Private keys never leave their nodes">
-      <template #icon><ShieldCheck :size="19" aria-hidden="true" /></template>
-      Plans contain <code>{{ PRIVATE_KEY_PLACEHOLDER }}</code>. The agent substitutes its local key during an approved apply, under rollback watchdog and control-plane self-check.
-    </PcNotice>
+    <!-- The layers: an underline row of their own (design review of wave 1,
+         "Tab decision"). Only Fleet has a toolbar, and only over rows or a
+         search (design 23 section 3.7). -->
+    <PcToolbar class="wg-layer-bar" label="WireGuard layers">
+      <template #tabs>
+        <PcLensTabs v-model="view" class="wg-layer-tabs" label="WireGuard layers">
+          <PcLensTab value="overview" label="Overview" />
+          <PcLensTab value="fleet" label="Fleet" :count="landed ? readiness.total : null" />
+          <PcLensTab value="mesh" label="Mesh" :count="landed ? readyNodes.length : null" />
+        </PcLensTabs>
+      </template>
+    </PcToolbar>
+
+    <PcToolbar v-if="view === 'fleet' && landed && (nodes.length || searching)" label="Fleet toolbar">
+      <template #search>
+        <PcSearchField v-model="search" label="Search fleet" placeholder="Search node, address, endpoint or key" />
+      </template>
+      <template v-if="searching" #note>{{ visibleNodes.length }} of {{ readiness.total }} nodes match</template>
+    </PcToolbar>
 
     <PcPanel v-if="handshakeExpired && !init && !bootError">
       <PcEmptyState kind="handshake" title="The console has not answered">
@@ -377,214 +453,105 @@ onBeforeUnmount(() => {
     </PcPanel>
 
     <template v-else-if="loading">
-      <PcSkeleton variant="strip" :count="4" label="Loading mesh summary" />
       <PcPanel>
         <PcSkeleton :count="8" label="Loading WireGuard state" />
       </PcPanel>
     </template>
 
     <!-- Only a read that landed reaches this block. -->
-    <template v-else>
-      <PcStatStrip :count="4" label="Mesh summary">
-        <PcStatCard
-          label="Ready nodes"
-          :value="`${readiness.ready} / ${readiness.total}`"
-          :note="`${readiness.total - readiness.ready} still missing an address or a key`"
-          :tone="readiness.total && !readiness.ready ? 'warning' : undefined"
+    <PcPanel v-else-if="!nodes.length">
+      <PcEmptyState title="No visible nodes">
+        <template #icon><Network :size="26" aria-hidden="true" /></template>
+        <p>WireGuard metadata appears after agents report their node state. If the fleet has nodes and none is listed here, this session may not be allowed to read them.</p>
+      </PcEmptyState>
+    </PcPanel>
+
+    <section v-else-if="view === 'overview'" id="pc-panel-overview" class="wg-overview" role="tabpanel" aria-labelledby="pc-tab-overview">
+      <ReadinessOverview :items="attention" :bar="bar" :total="readiness.total" :agents="agents" :can-navigate="Boolean(channel)" @act="onAttention" />
+    </section>
+
+    <PcPanel v-else-if="view === 'fleet'" id="pc-panel-fleet" role="tabpanel" aria-labelledby="pc-tab-fleet">
+      <PcPanelHeader title="Fleet nodes" :description="columnsNote ? `Grouped by what each node lacks. Columns no node reports are left out: ${columnsNote}.` : 'Grouped by what each node lacks. Open a node for its interface facts, its peers and its plan.'">
+        <PcCount :value="`${readiness.total} nodes · ${readiness.ready} mesh-ready`" />
+      </PcPanelHeader>
+
+      <template v-if="visibleNodes.length">
+        <FleetTable
+          :groups="pagedGroups"
+          :totals="groupTotals"
+          :columns="columns"
+          :active-id="openId"
+          :can-plan="canPlan"
+          :now="now"
+          :sort-key="sortKey"
+          :sort-direction="sortDirection"
+          @open="openPanel"
+          @plan="openPlan"
+          @sort="toggleSort"
         />
-        <PcStatCard label="Online mesh" :value="readiness.onlineReady" note="Ready, agent online, not disabled" />
-        <PcStatCard label="Public endpoints" :value="readiness.endpoints" note="Reachable from outside the mesh" />
-        <PcStatCard label="Partial setup" :value="readiness.needsKey + readiness.needsAddress" note="One half of the pair reported" />
-      </PcStatStrip>
+        <PcPagination
+          v-if="pages > 1"
+          v-model:page="page"
+          :pages="pages"
+          :from="pageFrom"
+          :to="pageTo"
+          :total="visibleNodes.length"
+          noun="Nodes"
+          :note="searching ? 'matching the search' : ''"
+          label="Fleet pagination"
+        />
+      </template>
 
-      <PcToolbar label="Fleet toolbar">
-        <template #tabs>
-          <PcLensTabs :model-value="lens" label="WireGuard lens" @update:model-value="setLens">
-            <PcLensTab value="fleet" label="Fleet" :count="readiness.total" />
-            <PcLensTab value="mesh" label="Mesh" :count="readyNodes.length" />
-          </PcLensTabs>
+      <PcEmptyState v-else kind="no-match" title="No node matches that search">
+        <template #icon><Network :size="26" aria-hidden="true" /></template>
+        <p>Nothing in {{ readiness.total }} nodes matches <span class="pc-mono">{{ search.trim() }}</span>. The search covers node name and id, address, endpoint and public key.</p>
+        <template #actions><PcButton @click="search = ''">Clear the search</PcButton></template>
+      </PcEmptyState>
+    </PcPanel>
+
+    <PcPanel v-else id="pc-panel-mesh" role="tabpanel" aria-labelledby="pc-tab-mesh">
+      <PcPanelHeader title="Mesh" description="Every mesh-ready node gets a host route to each of the others. Open a node for its peers and its plan.">
+        <PcCount :value="readyNodes.length ? `${readyNodes.length} mesh-ready · ${peerCount} ${peerCount === 1 ? 'peer' : 'peers'} in each config` : '0 mesh-ready'" />
+      </PcPanelHeader>
+      <MeshList v-if="readyNodes.length" :nodes="readyNodes" :active-id="openId" @open="openPanel" />
+      <PcEmptyState v-else title="No node is mesh-ready">
+        <template #icon><Spline :size="26" aria-hidden="true" /></template>
+        <p>A node becomes mesh-ready when the control plane holds both a WireGuard address and the public key its agent reported. The Overview says what stops it and the step that changes it.</p>
+        <template #actions>
+          <PcButton @click="view = 'overview'">Open the Overview</PcButton>
+          <PcButton @click="view = 'fleet'">See what each node lacks</PcButton>
         </template>
-        <template v-if="lens === 'fleet'" #search>
-          <PcSearchField v-model="search" label="Search fleet" placeholder="Search node, address, endpoint or key" />
-        </template>
-        <template v-if="lens === 'fleet' && searching" #note>{{ visibleNodes.length }} of {{ readiness.total }} nodes match</template>
-      </PcToolbar>
+      </PcEmptyState>
+    </PcPanel>
 
-      <PcPanel v-if="lens === 'fleet'" id="pc-panel-fleet" role="tabpanel" aria-labelledby="pc-tab-fleet">
-        <PcPanelHeader title="Fleet nodes" description="A node joins the mesh once the control plane holds both its WireGuard address and its public key. Open a node for its interface facts and the peers this session can see for it.">
-          <PcCount :value="`${readiness.total} nodes · ${readyNodes.length} mesh-ready`" />
-        </PcPanelHeader>
-
-        <template v-if="visibleNodes.length">
-          <PcTable :min-width="1000" label="Fleet nodes">
-            <template #head>
-              <PcTh
-                v-for="column in NODE_COLUMNS"
-                :key="column.label"
-                :name="column.name"
-                :sortable="!!column.key"
-                :sort="ariaSort(column.key)"
-                @sort="column.key && toggleSort(column.key)"
-              >{{ column.label }}</PcTh>
-              <PcTh actions>Actions</PcTh>
-            </template>
-            <tbody v-for="node in pagedNodes" :key="node.node_id">
-              <PcRow :id="`node-${node.node_id}`" :open="expanded.isOpen(node.node_id)">
-                <PcNameCell
-                  :name="displayName(node)"
-                  :id="node.node_id"
-                  :expanded="expanded.isOpen(node.node_id)"
-                  :controls="`node-${node.node_id}-detail`"
-                  :status="agentStatus(node)"
-                  @toggle="toggleNode(node.node_id)"
-                >
-                  <template #status><PcStatePill :tone="configTone(node)" :label="node.configuration" :title="readinessGapLabel(readinessGap(node))" /></template>
-                </PcNameCell>
-                <PcTd label="Address" mono :title="node.address ? `reported ${node.address}, pinned into peer AllowedIPs as ${hostRoute(node.address)}` : 'no address reported'">{{ node.address || 'not reported' }}</PcTd>
-                <PcTd label="Public key" mono :title="node.public_key ? 'Public key, shown truncated' : 'The agent has not reported a public key'">{{ redactedKey(node.public_key) }}</PcTd>
-                <PcTd label="Endpoint" mono :title="node.endpoint || 'No public endpoint reported, so peers cannot dial in to this node'">{{ node.endpoint || 'not reported' }}</PcTd>
-                <PcTd label="Configuration" stack="state">
-                  <PcStatePill :tone="configTone(node)" :label="node.configuration" :title="readinessGapLabel(readinessGap(node))" />
-                  <small v-if="readinessGap(node) !== 'ready'" :title="readinessGapLabel(readinessGap(node))">{{ readinessGapLabel(readinessGap(node)) }}</small>
-                </PcTd>
-                <PcTd label="Agent" mono :title="`${agentStatus(node).label}, last seen ${formatDate(node.last_seen)}`">{{ formatDate(node.last_seen) }}</PcTd>
-                <PcActionsCell>
-                  <PcButton v-if="canPlan" compact :disabled="readinessGap(node) !== 'ready'" :title="planTitle(node)" @click="openPlan(node)">
-                    <template #icon><FileCode2 :size="13" aria-hidden="true" /></template>
-                    Plan
-                  </PcButton>
-                </PcActionsCell>
-              </PcRow>
-
-              <template v-if="expanded.isOpen(node.node_id)">
-                <PcDetailRow :id="`node-${node.node_id}-detail`" :colspan="COLUMN_COUNT">
-                  <div class="node-detail">
-                    <section>
-                      <h3>Interface as reported</h3>
-                      <dl class="facts">
-                        <!-- The reported address, verbatim. The prefix the interface is
-                             actually given is assigned by the control plane, so printing a
-                             host route under an "Address" label would be a guess wearing a
-                             fact's clothes. -->
-                        <dt>Reported address</dt><dd :title="node.address || 'not reported'">{{ node.address || 'not reported' }}</dd>
-                        <dt>AllowedIPs on every peer</dt><dd :title="hostRoute(node.address) || 'not reported'">{{ hostRoute(node.address) || 'not reported' }}</dd>
-                        <dt>Listen port</dt><dd>{{ node.listen_port || 51820 }}</dd>
-                        <dt>Public key</dt><dd :title="redactedKey(node.public_key)">{{ redactedKey(node.public_key) }}</dd>
-                        <dt>Endpoint</dt><dd :title="node.endpoint || 'not reported'">{{ node.endpoint || 'not reported' }}</dd>
-                        <dt>Last seen</dt><dd :title="formatDate(node.last_seen)">{{ formatDate(node.last_seen) }}</dd>
-                        <dt>Key source</dt><dd>node-local file</dd>
-                        <template v-if="readinessGap(node) !== 'ready'"><dt>Mesh readiness</dt><dd :title="readinessGapLabel(readinessGap(node))">{{ readinessGapLabel(readinessGap(node)) }}</dd></template>
-                      </dl>
-                    </section>
-                    <!-- This block used to draw a wg0.conf. It was not the wg0.conf that
-                         gets applied: the control plane renders the real one and assigns
-                         the interface a wider prefix than the host route shown here, plus
-                         a keepalive this plugin never sees. Reviewing one document and
-                         approving another is the defect, so the drawing is gone. What is
-                         left is only what the overview call actually returned. -->
-                    <section class="detail-caveat">
-                      <h3>Mesh membership</h3>
-                      <p v-if="meshPeersFor(node, nodes).length">
-                        <strong>{{ meshPeersFor(node, nodes).length }} visible {{ meshPeersFor(node, nodes).length === 1 ? 'peer' : 'peers' }}</strong>
-                        The rows below are the peers this session can see for {{ displayName(node) }}, not the applied configuration.
-                      </p>
-                      <p v-else-if="readinessGap(node) !== 'ready'"><strong>No peers to list</strong>{{ displayName(node) }} is not mesh-ready itself. {{ readinessGapLabel(readinessGap(node)) }}.</p>
-                      <p v-else><strong>No peers to list</strong>No other node is mesh-ready, so this node would be given a mesh with no peers in it.</p>
-                      <p><strong>The applied configuration is rendered by the control plane, not here.</strong>It is shown in full on the approval, before anything reaches a node. This page cannot show:</p>
-                      <ul>
-                        <li v-for="item in PLAN_UNKNOWNS" :key="item">{{ item }}</li>
-                      </ul>
-                    </section>
-                  </div>
-                </PcDetailRow>
-                <!-- Peers are part of the open node's fold: they take the open
-                     surface with the row and its detail, so the block reads as
-                     one attached unit against the plain rows of other nodes,
-                     and each id line leads with the owner's name. -->
-                <PcRow v-for="peer in meshPeersFor(node, nodes)" :key="`${node.node_id}-${peer.node_id}`" class="peer-row">
-                  <PcNameCell :name="displayName(peer)" :sub="peerSubline(node, peer)" :level="1" :status="agentStatus(peer)">
-                    <template #after><PcKindChip label="peer" :title="`A mesh peer of ${displayName(node)}`" /></template>
-                  </PcNameCell>
-                  <PcTd label="Address" mono :title="`${peer.address} pinned into AllowedIPs as ${hostRoute(peer.address)}`">{{ hostRoute(peer.address) }}</PcTd>
-                  <PcTd label="Public key" mono title="Public key, shown truncated">{{ redactedKey(peer.public_key) }}</PcTd>
-                  <PcTd label="Endpoint" mono :title="peer.endpoint || 'dial-out only, no public endpoint'">{{ peer.endpoint || 'dial-out only' }}</PcTd>
-                  <PcTd label="Configuration" stack="state"><PcStatePill tone="healthy" label="ready" title="Address and public key both reported" /></PcTd>
-                  <PcTd label="Agent" mono :title="`${agentStatus(peer).label}, last seen ${formatDate(peer.last_seen)}`">{{ formatDate(peer.last_seen) }}</PcTd>
-                  <PcActionsCell />
-                </PcRow>
-              </template>
-            </tbody>
-          </PcTable>
-          <PcPagination
-            v-if="pages > 1"
-            v-model:page="page"
-            :pages="pages"
-            :from="pageFrom"
-            :to="pageTo"
-            :total="visibleNodes.length"
-            noun="Nodes"
-            :note="searching ? 'matching the search' : ''"
-            label="Fleet pagination"
-          />
-        </template>
-
-        <PcEmptyState v-else-if="searching" kind="no-match" title="No node matches that search" :icon="Network">
-          <p>Nothing in {{ readiness.total }} nodes matches <span class="pc-mono">{{ search.trim() }}</span>. The search covers node name and id, address, endpoint and public key.</p>
-          <template #actions><PcButton @click="search = ''">Clear the search</PcButton></template>
-        </PcEmptyState>
-
-        <!-- A read that landed with no nodes; a failed read holds the error block above instead. -->
-        <PcEmptyState v-else title="No visible nodes" :icon="Network">
-          <p>WireGuard metadata appears after agents report their node state. If the fleet has nodes and none is listed here, this session may not be allowed to read them.</p>
-        </PcEmptyState>
-      </PcPanel>
-
-      <PcPanel v-else id="pc-panel-mesh" role="tabpanel" aria-labelledby="pc-tab-mesh">
-        <PcPanelHeader title="Full-mesh readiness" description="Every mesh-ready node gets a host route to each of the others. Pick a node to open it in the fleet list with its peers folded beneath.">
-          <PcCount :value="`${readyNodes.length} mesh-ready`" />
-        </PcPanelHeader>
-        <div v-if="readyNodes.length" class="mesh">
-          <div class="mesh-core">
-            <Spline :size="23" aria-hidden="true" />
-            <strong>{{ readyNodes.length }} mesh-ready nodes</strong>
-            <span>{{ peerCount }} peer blocks in each config</span>
-          </div>
-          <button
-            v-for="node in readyNodes"
-            :key="node.node_id"
-            type="button"
-            class="mesh-peer"
-            :title="meshTileTitle(node)"
-            @click="showNode(node.node_id)"
-          >
-            <strong>{{ displayName(node) }}</strong>
-            <small>{{ node.address }}</small>
-            <PcStateDot :tone="agentStatus(node).tone" :label="agentStatus(node).label" :title="agentStatus(node).title" />
-          </button>
-        </div>
-
-        <!-- The live state on this fleet. A zero here is not an error, it is a
-             fleet whose agents have not reported the two fields a mesh needs,
-             so the panel counts which field is missing where. -->
-        <PcEmptyState v-else title="No node is mesh-ready" :icon="Spline">
-          <p v-if="!readiness.total">No node reports WireGuard metadata at all. Nodes appear here once their agent has checked in.</p>
-          <template v-else>
-            <p>A node becomes mesh-ready when the control plane holds both a WireGuard address and the public key its agent reported. Both arrive from the node's own agent report, so a node stays out of the mesh until it has a WireGuard interface configured on the host.</p>
-            <ul class="readiness-breakdown">
-              <li><strong>{{ readiness.needsBoth }}</strong> report neither</li>
-              <li><strong>{{ readiness.needsKey }}</strong> have an address, no key</li>
-              <li><strong>{{ readiness.needsAddress }}</strong> have a key, no address</li>
-              <li v-if="readiness.disabled"><strong>{{ readiness.disabled }}</strong> disabled</li>
-            </ul>
-            <p>The fleet lens lists every node and what it is missing.</p>
-          </template>
-          <template #actions><PcButton @click="setLens('fleet')">Open the fleet lens</PcButton></template>
-        </PcEmptyState>
-      </PcPanel>
-    </template>
+    <!-- L2: one node, on `open=<node_id>`, from any layer. -->
+    <PcSidePanel
+      :open="Boolean(openId) && !bootError"
+      :title="panelTitle"
+      :description="panelDescription"
+      class="wg-node-panel"
+      close-label="Close node panel"
+      :return-focus-to="panelReturn"
+      @close="closePanel"
+    >
+      <PcSkeleton v-if="panelState === 'loading'" :count="6" label="Loading this node" />
+      <PcEmptyState v-else-if="panelState === 'unread'" kind="error" title="This node could not be read">
+        <p>The fleet read failed, so whether <span class="pc-mono">{{ openId }}</span> is in the fleet is not known. The message on the page says what stopped it.</p>
+        <template #actions><PcButton :busy="refreshing" @click="refresh()">Try again</PcButton></template>
+      </PcEmptyState>
+      <PcEmptyState v-else-if="panelState === 'missing' || !openNode" title="This node is not in the fleet this session can see">
+        <p>The link names <span class="pc-mono">{{ openId }}</span>, which the overview does not list. It may have been removed, or be outside this session's read scope.</p>
+        <template #actions><PcButton @click="closePanel(); view = 'fleet'">Show the fleet</PcButton></template>
+      </PcEmptyState>
+      <NodeFacts v-else :node="openNode" :nodes="nodes" :can-plan="canPlan" @plan="openPlan(openNode)" />
+    </PcSidePanel>
 
     <PcModal :open="!!planNode" title="Create mesh configuration plan" :description="planNode ? displayName(planNode) : ''" @close="planNode = undefined">
       <form v-if="planNode" id="plan-form" class="plan-form" @submit.prevent="createPlan">
+        <PcNotice tone="info" title="Private keys never leave their nodes">
+          <template #icon><ShieldCheck :size="17" aria-hidden="true" /></template>
+          The plan carries <code>{{ PRIVATE_KEY_PLACEHOLDER }}</code> where the key goes. The node's agent substitutes its local key during an approved apply, under the rollback watchdog and a control-plane self-check.
+        </PcNotice>
         <label>
           <span>Listen port</span>
           <input v-model="listenPort" type="number" min="1" max="65535" />
