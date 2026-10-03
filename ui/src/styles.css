@@ -97,12 +97,6 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 
 /* ── Fleet and Mesh: one click target per row ───────────────────────────── */
 
-/* chassis-workaround: sr-only text escapes the table scroller.
-   The wrap is the containing block for anything absolutely positioned in a
-   cell, so screen-reader text stays inside the sideways scroll instead of
-   widening the page. Remove this rule once plugin-bridge's chassis.css gives
-   .pc-table-wrap `position: relative` itself. */
-.pc-table-wrap { position: relative; }
 .wg-click-row { cursor: pointer; }
 .pc-table .wg-row-open { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 0; border-radius: var(--radius-sm); padding: 0; color: inherit; background: transparent; font: inherit; font-size: var(--text-body); font-weight: 620; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .wg-click-row:hover .wg-row-open { text-decoration: underline; text-decoration-color: var(--muted-foreground); text-underline-offset: 3px; }
@@ -116,21 +110,6 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 
 /* ── The node panel ─────────────────────────────────────────────────────── */
 
-/* chassis-workaround: PcSidePanel is always modal. From 768px the node panel
-   sits beside the rows (design 23, 3.5; the 2026-09-30 design review
-   decision for every plugin): no scrim, and the rows around it stay live,
-   so a click on another row swaps open=. Below 768px it stays a modal,
-   full-height sheet. This is CSS only, the same rules as Sub-Store and
-   vpn-core: the panel still says aria-modal and keeps Tab inside it, so
-   keyboard and screen-reader behaviour is modal as before. Remove once
-   plugin-bridge gives PcSidePanel a non-modal form (a modal prop, or
-   automatic at min-width 768px): no scrim, pointer events through the
-   .pc-overlay wrapper, aria-modal false or role=complementary with a
-   label, no Tab wrap, Escape and focus return kept. */
-@media (min-width: 768px) {
-  .pc-overlay[data-kind="panel"] { background: transparent; pointer-events: none; }
-  .pc-overlay[data-kind="panel"] > .pc-side-panel { pointer-events: auto; }
-}
 .wg-node-panel .pc-side-panel { width: min(560px, 100%); }
 .wg-node { display: flex; flex-direction: column; gap: var(--space-4); font-size: var(--pc-text-sm); }
 .wg-node h3 { margin: 0 0 var(--space-2); color: var(--muted-foreground); font-size: var(--pc-text-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
