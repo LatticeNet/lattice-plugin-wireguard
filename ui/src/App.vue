@@ -17,7 +17,7 @@
  * ignores the reported number (PluginFrameHost.vue), so measuring the
  * document on every body resize bought nothing.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { CheckCircle2, Copy, FileCode2, KeyRound, Network, RefreshCw, Route, ShieldCheck, Spline } from "@lucide/vue";
 
 import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
@@ -50,15 +50,10 @@ import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
 import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
-import { revealSelectedTab } from "./layerTabs";
-import { TASKS_ROUTE, postNavigate } from "./navigate";
+import { TASKS_ROUTE, consoleOriginFromHash, postNavigate } from "./navigate";
 import {
-  channelFromHash,
   createStateSender,
   documentPageState,
-  listenForInitPageState,
-  stateMessage,
-  validPageState,
   writeDocumentState,
   type PageState,
   type StateSender,
@@ -114,33 +109,19 @@ function applyState(state: WgPageState): void {
 
 const pageState = computed<PageState>(() => encodeWgState({ view: view.value, open: openId.value, q: search.value }));
 
-const channel = channelFromHash(window.location.hash);
-let hostState: PageState | undefined;
+/** The console that embedded this frame, for asking it to navigate (navigate.ts). */
+const consoleOrigin = consoleOriginFromHash(window.location.hash);
 let hostKeepsState = false;
 let stateSender: StateSender | undefined;
-/* Registered before the bridge client, so it hears init first (pageState.ts). */
-let stopInitListener: (() => void) | undefined = channel
-  ? listenForInitPageState(window, channel, (state) => {
-      hostState = state;
-    })
-  : undefined;
 
 /* The state goes out only after init, and only once the operator changes
  * something: the page's reading of the address is not a reason to rewrite a
- * pasted link. */
-function adoptPageState(): void {
+ * pasted link. `hostState` is undefined from a host that keeps no page state. */
+function adoptPageState(hostState: PageState | undefined): void {
   hostKeepsState = hostState !== undefined;
   if (hostState) applyState(decodeWgState(hostState));
-  stopInitListener?.();
-  stopInitListener = undefined;
   stateSender?.dispose();
-  stateSender = createStateSender(sendState, { baseline: pageState.value });
-}
-
-function sendState(state: PageState): void {
-  const valid = validPageState(state);
-  if (!bridge || !channel || !valid) return;
-  window.parent.postMessage(stateMessage(bridge.nonce, valid), channel.hostOrigin);
+  stateSender = createStateSender((state) => bridge?.sendState(state), { baseline: pageState.value });
 }
 
 function publishPageState(state: PageState): void {
@@ -156,18 +137,13 @@ let bridge: BridgeClient | undefined;
 try {
   bridge = new BridgeClient({ window, expectedPluginId: "latticenet.wireguard", expectedRoutes: ["networks"], idPrefix: "wireguard" });
   bridge.init.then(async (value) => {
-    adoptPageState();
+    adoptPageState(value.pageState);
     init.value = value;
     await refresh();
   }).catch((cause) => {
-    // A handshake that never completes leaves the raw init listener
-    // registered for the life of the page; nothing will ever arrive for it.
-    stopInitListener?.();
-    stopInitListener = undefined;
     bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
   });
 } catch (cause) {
-  stopInitListener?.();
   bootError.value = safeErrorMessage(cause, HANDSHAKE_FALLBACK);
 }
 
@@ -197,7 +173,7 @@ const bar = computed(() => readinessBar(readiness.value));
 
 function onAttention(kind: AttentionActionKind): void {
   if (kind === "tasks") {
-    if (channel) postNavigate(window, TASKS_ROUTE, channel.hostOrigin);
+    if (consoleOrigin) postNavigate(window, TASKS_ROUTE, consoleOrigin);
     return;
   }
   view.value = kind;
@@ -262,12 +238,6 @@ function closePanel(): void {
   panelReturn.value = row?.querySelector<HTMLElement>(".wg-row-open") ?? null;
   openId.value = "";
 }
-
-/* The segmented layer row scrolls sideways in a narrow frame; keep the
- * selected layer in it, again once a read lands, since the tab counts it
- * adds widen the row. */
-onMounted(() => revealSelectedTab(document.querySelector(".wg-layer-tabs")));
-watch([view, landed], () => revealSelectedTab(document.querySelector(".wg-layer-tabs")), { flush: "post" });
 
 async function call<T>(method: string, payload: unknown = {}): Promise<T> {
   if (!bridge || !canCall(init.value, SERVICE, method)) {
@@ -372,7 +342,6 @@ function reloadFrame(): void {
 }
 
 onBeforeUnmount(() => {
-  stopInitListener?.();
   stateSender?.dispose();
   bridge?.dispose();
 });
@@ -411,17 +380,14 @@ onBeforeUnmount(() => {
     <PcNotice v-if="notice" tone="success" dismissible dismiss-label="Dismiss notice" @dismiss="notice = ''">{{ notice }}</PcNotice>
 
     <!-- The layers: an underline row of their own (design review of wave 1,
-         "Tab decision"). Only Fleet has a toolbar, and only over rows or a
-         search (design 23 section 3.7). -->
-    <PcToolbar class="wg-layer-bar" label="WireGuard layers">
-      <template #tabs>
-        <PcLensTabs v-model="view" class="wg-layer-tabs" label="WireGuard layers">
-          <PcLensTab value="overview" label="Overview" />
-          <PcLensTab value="fleet" label="Fleet" :count="landed ? readiness.total : null" />
-          <PcLensTab value="mesh" label="Mesh" :count="landed ? readyNodes.length : null" />
-        </PcLensTabs>
-      </template>
-    </PcToolbar>
+         "Tab decision"), which keeps the selected layer in view itself, again
+         when the counts land. Only Fleet has a toolbar, and only over rows or
+         a search (design 23 section 3.7). -->
+    <PcLensTabs v-model="view" variant="layer" label="WireGuard layers">
+      <PcLensTab value="overview" label="Overview" />
+      <PcLensTab value="fleet" label="Fleet" :count="landed ? readiness.total : null" />
+      <PcLensTab value="mesh" label="Mesh" :count="landed ? readyNodes.length : null" />
+    </PcLensTabs>
 
     <PcToolbar v-if="view === 'fleet' && landed && (nodes.length || searching)" label="Fleet toolbar">
       <template #search>
@@ -467,7 +433,7 @@ onBeforeUnmount(() => {
     </PcPanel>
 
     <section v-else-if="view === 'overview'" id="pc-panel-overview" class="wg-overview" role="tabpanel" aria-labelledby="pc-tab-overview">
-      <ReadinessOverview :items="attention" :bar="bar" :total="readiness.total" :agents="agents" :can-navigate="Boolean(channel)" @act="onAttention" />
+      <ReadinessOverview :items="attention" :bar="bar" :total="readiness.total" :agents="agents" :can-navigate="Boolean(consoleOrigin)" @act="onAttention" />
     </section>
 
     <PcPanel v-else-if="view === 'fleet'" id="pc-panel-fleet" role="tabpanel" aria-labelledby="pc-tab-fleet">

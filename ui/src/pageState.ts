@@ -1,9 +1,11 @@
 /**
  * chassis-copy: the same file is in lattice-plugin-netguard and
- * lattice-plugin-wireguard, and vpn-core and Sub-Store carry their own. It
- * belongs in @latticenet/plugin-bridge/chassis as a pageState helper (the
- * client already owns init); change every copy together until the chassis
- * release that exports it, then delete them.
+ * lattice-plugin-wireguard, and vpn-core and Sub-Store carry their own. The
+ * rules, the init field and the outbound message are the bridge client's
+ * since @latticenet/plugin-bridge 0.2.0; what is left here (the address
+ * filter, the frame's own fallback and the paced sender) belongs in the
+ * chassis too. Change every copy together until a chassis release exports
+ * it, then delete them.
  *
  * pageState.ts, where the page's layer, open object and search live between
  * reloads.
@@ -15,66 +17,29 @@
  * in the console address"):
  *
  *   host to plugin  `lattice.host.init` carries `pageState`, the query of the
- *                   console's plugin route, filtered by the rules below;
- *   plugin to host  `lattice.plugin.state` carries the full state, debounced,
- *                   and the console replaces its query with it (history
- *                   replace, no frame reload).
+ *                   console's plugin route, filtered by the contract's rules
+ *                   (HostInit.pageState);
+ *   plugin to host  BridgeClient.sendState posts `lattice.plugin.state` with
+ *                   the full state, which createStateSender below debounces
+ *                   and paces, and the console replaces its query with it
+ *                   (history replace, no frame reload).
  *
- * Both sides apply the same rules: at most 16 keys, keys
- * `^[a-z][a-z0-9_]{0,23}$`, string values up to 256 characters, nothing before
- * init, and the console's reserved keys never cross in either direction.
- *
- * The bridge client this plugin vendors (0.1.0-alpha.2) rebuilds init from
- * the fields it knows and drops `pageState`, so the field is read here from
- * the same message, behind the same checks the client applies (the parent
- * window, the pinned host origin, the frame's nonce), and the state message
- * is posted the same way the client posts its own. A console that predates
- * the contract sends no `pageState` and ignores the message; the page then
- * keeps its state in its own document query, which survives only a reload of
- * the frame itself and may be refused in an opaque-origin frame, so that
- * write is best effort.
+ * Both sides apply the same rules (validPageState in the bridge): at most 16
+ * keys, keys `^[a-z][a-z0-9_]{0,23}$`, string values up to 256 characters,
+ * nothing before init, and the console's reserved keys never cross in either
+ * direction. A console that predates the contract sends no `pageState` and
+ * ignores the message; the page then keeps its state in its own document
+ * query, which survives only a reload of the frame itself and may be refused
+ * in an opaque-origin frame, so that write is best effort.
  */
 
-export type PageState = Record<string, string>;
+import { PAGE_STATE_MAX_KEYS, PAGE_STATE_MAX_VALUE_LENGTH, validPageState, type PageState } from "@latticenet/plugin-bridge";
 
-export const PAGE_STATE_MESSAGE = "lattice.plugin.state";
-export const PAGE_STATE_MAX_KEYS = 16;
-export const PAGE_STATE_KEY_PATTERN = /^[a-z][a-z0-9_]{0,23}$/;
-export const PAGE_STATE_MAX_VALUE_LENGTH = 256;
-/** The console's own query keys. They never cross the bridge either way. */
-export const RESERVED_PAGE_STATE_KEYS: ReadonlySet<string> = new Set([
-  "redirect", "next", "code", "state", "token", "sso_error", "totp_challenge", "mfa",
-]);
+export { PAGE_STATE_MAX_VALUE_LENGTH, validPageState, type PageState };
 
+/** One entry under the contract's rules, asked of the bridge's own check. */
 function validEntry(key: string, value: unknown): value is string {
-  return PAGE_STATE_KEY_PATTERN.test(key) && !RESERVED_PAGE_STATE_KEYS.has(key) &&
-    typeof value === "string" && value.length <= PAGE_STATE_MAX_VALUE_LENGTH;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** The entries of a record without the console's reserved keys. */
-export function withoutReservedKeys(value: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(value).filter(([key]) => !RESERVED_PAGE_STATE_KEYS.has(key)));
-}
-
-/**
- * The state if every entry keeps the rules, otherwise undefined. One bad entry
- * drops the whole state, as the host drops the whole message, so a state is
- * never applied by halves.
- */
-export function validPageState(value: unknown): PageState | undefined {
-  if (!isRecord(value)) return undefined;
-  const entries = Object.entries(value);
-  if (entries.length > PAGE_STATE_MAX_KEYS) return undefined;
-  const state: PageState = {};
-  for (const [key, entry] of entries) {
-    if (!validEntry(key, entry)) return undefined;
-    state[key] = entry;
-  }
-  return state;
+  return validPageState({ [key]: value }) !== undefined;
 }
 
 /**
@@ -101,75 +66,6 @@ export function filterPageState(entries: Iterable<readonly [string, unknown]>): 
 /** One spelling per state regardless of key order, for comparing states. */
 export function pageStateKey(state: PageState): string {
   return JSON.stringify(Object.entries(state).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
-}
-
-// ── the channel ───────────────────────────────────────────────────────────
-
-/** The frame's channel as the URL fragment names it, or null when it does not. */
-export interface Channel {
-  nonce: string;
-  hostOrigin: string;
-}
-
-/**
- * The nonce and host origin from the frame URL fragment, fail-closed the way
- * the bridge client reads them: an absent nonce, or a host origin that is not
- * an absolute http(s) origin, is no channel at all.
- */
-export function channelFromHash(hash: string): Channel | null {
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
-  const nonce = params.get("lattice_nonce") ?? "";
-  if (nonce.length < 16 || nonce.length > 128) return null;
-  const raw = params.get("host_origin")?.trim();
-  if (!raw) return null;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  return { nonce, hostOrigin: url.origin };
-}
-
-interface MessageWindow {
-  parent: unknown;
-  addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
-  removeEventListener(type: "message", listener: (event: MessageEvent) => void): void;
-}
-
-/**
- * `pageState` off the host's init message: the state when the host keeps page
- * state, undefined when it sent none (a console from before the contract) or
- * sent a state that breaks the rules (a host fault, set aside rather than
- * failing the start). A reserved key is dropped on its own on the way in.
- *
- * Register this before constructing the bridge client. The browser runs
- * microtasks between two listeners of one message, so a listener added after
- * the client's would hear init only after the page had already reacted to it.
- */
-export function listenForInitPageState(
-  win: MessageWindow,
-  channel: Channel,
-  onState: (state: PageState | undefined) => void,
-): () => void {
-  const onMessage = (event: MessageEvent) => {
-    if (event.source !== win.parent || event.origin !== channel.hostOrigin) return;
-    const data = event.data as unknown;
-    if (!isRecord(data) || data.nonce !== channel.nonce || data.type !== "lattice.host.init") return;
-    if (data.pageState === undefined) {
-      onState(undefined);
-      return;
-    }
-    onState(validPageState(isRecord(data.pageState) ? withoutReservedKeys(data.pageState) : data.pageState));
-  };
-  win.addEventListener("message", onMessage);
-  return () => win.removeEventListener("message", onMessage);
-}
-
-/** The outbound message, exactly as the contract spells it. */
-export function stateMessage(nonce: string, state: PageState): { type: string; nonce: string; state: PageState } {
-  return { type: PAGE_STATE_MESSAGE, nonce, state };
 }
 
 // ── the fallback: the frame's own document query ──────────────────────────

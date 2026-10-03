@@ -2,40 +2,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   PAGE_STATE_MAX_VALUE_LENGTH,
-  channelFromHash,
   createStateSender,
   filterPageState,
-  listenForInitPageState,
   pageStateKey,
-  stateMessage,
   validPageState,
   type PageState,
 } from "./pageState";
 import { DEFAULT_WG_STATE, decodeWgState, encodeWgState, type WgPageState } from "./viewState";
 
-const NONCE = "nonce-0123456789abcdef";
-const HOST = "https://console.example.test";
-
+// The contract's rules themselves (validPageState) are the bridge client's
+// and are tested in @latticenet/plugin-bridge.
 describe("page state rules", () => {
-  it("accepts a state inside the contract and drops the whole state on any bad entry", () => {
-    expect(validPageState({ view: "fleet", open: "node-hkg-edge-01" })).toEqual({ view: "fleet", open: "node-hkg-edge-01" });
-    expect(validPageState({})).toEqual({});
-    expect(validPageState({ view: "fleet", Open: "x" })).toBeUndefined();
-    expect(validPageState({ "9lives": "x" })).toBeUndefined();
-    expect(validPageState({ ["a".repeat(25)]: "x" })).toBeUndefined();
-    expect(validPageState({ ["a".repeat(24)]: "x" })).toEqual({ ["a".repeat(24)]: "x" });
-    expect(validPageState({ q: "x".repeat(PAGE_STATE_MAX_VALUE_LENGTH + 1) })).toBeUndefined();
-    expect(validPageState({ q: "x".repeat(PAGE_STATE_MAX_VALUE_LENGTH) })).toBeDefined();
-    expect(validPageState({ view: 1 })).toBeUndefined();
-    expect(validPageState({ token: "abc" })).toBeUndefined();
-    expect(validPageState(null)).toBeUndefined();
-    expect(validPageState(["view", "fleet"])).toBeUndefined();
-    const seventeen = Object.fromEntries(Array.from({ length: 17 }, (_, index) => [`k${index}`, "v"]));
-    expect(validPageState(seventeen)).toBeUndefined();
-    delete seventeen.k16;
-    expect(validPageState(seventeen)).toBeDefined();
-  });
-
   it("filters an address entry by entry, leaving out repeats, reserved keys and extras past 16", () => {
     const query = new URLSearchParams(`view=fleet&Bad=1&expand=a&expand=b&next=/x&q=${"x".repeat(257)}&open=n1`);
     expect(filterPageState(query)).toEqual({ view: "fleet", open: "n1" });
@@ -48,69 +25,6 @@ describe("page state rules", () => {
     expect(pageStateKey({ view: "fleet" })).not.toBe(pageStateKey({ view: "mesh" }));
   });
 
-  it("spells the outbound message the way the contract does", () => {
-    expect(stateMessage(NONCE, { view: "mesh" })).toEqual({ type: "lattice.plugin.state", nonce: NONCE, state: { view: "mesh" } });
-  });
-});
-
-describe("the channel from the frame fragment", () => {
-  it("reads a nonce and an exact http(s) origin, and nothing else", () => {
-    expect(channelFromHash(`#lattice_nonce=${NONCE}&host_origin=${encodeURIComponent(`${HOST}/path`)}`)).toEqual({ nonce: NONCE, hostOrigin: HOST });
-    expect(channelFromHash(`#lattice_nonce=short&host_origin=${encodeURIComponent(HOST)}`)).toBeNull();
-    expect(channelFromHash(`#lattice_nonce=${NONCE}`)).toBeNull();
-    expect(channelFromHash(`#lattice_nonce=${NONCE}&host_origin=javascript%3Aalert(1)`)).toBeNull();
-    expect(channelFromHash(`#lattice_nonce=${NONCE}&host_origin=not%20a%20url`)).toBeNull();
-  });
-});
-
-describe("page state off the init message", () => {
-  type Listener = (event: MessageEvent) => void;
-  function fakeWindow() {
-    const parent = {};
-    const listeners = new Set<Listener>();
-    return {
-      parent,
-      listeners,
-      addEventListener: (_type: "message", listener: Listener) => listeners.add(listener),
-      removeEventListener: (_type: "message", listener: Listener) => listeners.delete(listener),
-      deliver(data: unknown, options: { source?: unknown; origin?: string } = {}) {
-        const event = { data, source: options.source ?? parent, origin: options.origin ?? HOST } as unknown as MessageEvent;
-        for (const listener of listeners) listener(event);
-      },
-    };
-  }
-  const init = (extra: Record<string, unknown>) => ({ type: "lattice.host.init", nonce: NONCE, version: "1", ...extra });
-
-  it("hands over the host's state, with a reserved key dropped on its own", () => {
-    const win = fakeWindow();
-    const seen: Array<PageState | undefined> = [];
-    listenForInitPageState(win, { nonce: NONCE, hostOrigin: HOST }, (state) => seen.push(state));
-    win.deliver(init({ pageState: { view: "fleet", open: "n1", next: "/evil" } }));
-    expect(seen).toEqual([{ view: "fleet", open: "n1" }]);
-  });
-
-  it("says undefined when the host keeps no page state or breaks the rules", () => {
-    const win = fakeWindow();
-    const seen: Array<PageState | undefined> = [];
-    listenForInitPageState(win, { nonce: NONCE, hostOrigin: HOST }, (state) => seen.push(state));
-    win.deliver(init({}));
-    win.deliver(init({ pageState: { View: "fleet" } }));
-    win.deliver(init({ pageState: "view=fleet" }));
-    expect(seen).toEqual([undefined, undefined, undefined]);
-  });
-
-  it("ignores a message from another window, another origin, another nonce, or of another type", () => {
-    const win = fakeWindow();
-    const seen: Array<PageState | undefined> = [];
-    const stop = listenForInitPageState(win, { nonce: NONCE, hostOrigin: HOST }, (state) => seen.push(state));
-    win.deliver(init({ pageState: { view: "fleet" } }), { source: {} });
-    win.deliver(init({ pageState: { view: "fleet" } }), { origin: "https://elsewhere.test" });
-    win.deliver({ ...init({ pageState: { view: "fleet" } }), nonce: "another-nonce-0000000" });
-    win.deliver({ ...init({ pageState: { view: "fleet" } }), type: "lattice.host.theme" });
-    expect(seen).toEqual([]);
-    stop();
-    expect(win.listeners.size).toBe(0);
-  });
 });
 
 describe("sending state to the host", () => {
