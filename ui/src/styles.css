@@ -61,33 +61,6 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
   .facts dd { text-align: left; }
 }
 
-/* ── The layer row ──────────────────────────────────────────────────────── */
-
-/* chassis-workaround: PcLensTabs are boxed, carry icons and share the toolbar.
-   Layers are an underline row of their own above the layer's toolbar, and a
-   segmented control below 620px (design review of wave 1, "Tab decision";
-   design 23 section 3.4). These are the rules Sub-Store draws over the
-   chassis tablist (lattice-plugin-sub-store ui/src/styles.css,
-   .ss-layer-tabs), so the tablist keeps its arrow keys and panel ids. The
-   hairline and the selected underline are inset shadows, not borders, so a
-   tab never hangs a pixel out of the sideways scroller. Remove once
-   plugin-bridge ships a layer variant of PcLensTabs. */
-.wg-layer-bar { align-items: center; box-shadow: inset 0 -1px 0 var(--border); }
-.wg-layer-tabs.pc-lens-tabs { display: flex; flex-wrap: nowrap; align-self: stretch; align-items: flex-end; gap: var(--space-1); max-width: 100%; overflow-x: auto; padding: 0; border: 0; border-radius: 0; background: transparent; scrollbar-width: thin; }
-.wg-layer-tabs .pc-lens-tab { flex: 0 0 auto; min-height: 36px; gap: 6px; margin: 0; padding: var(--space-2) var(--space-3); border: 0; border-radius: 0; color: var(--muted-foreground); background: transparent; box-shadow: none; font-size: var(--pc-text-sm); font-weight: 600; }
-.wg-layer-tabs .pc-lens-tab:hover { color: var(--foreground); }
-.wg-layer-tabs .pc-lens-tab[aria-selected="true"] { color: var(--foreground); background: transparent; box-shadow: inset 0 -2px 0 var(--primary); }
-.wg-layer-tabs .pc-lens-tab:focus-visible { border-radius: var(--radius-sm); outline: 2px solid var(--ring, var(--primary)); outline-offset: -2px; }
-/* vpn-core's count pill: 10px at weight 650, muted on muted, selected or not. */
-.wg-layer-tabs .pc-count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; color: var(--muted-foreground); background: var(--muted); font-size: var(--pc-text-badge); font-weight: 650; }
-
-@media (max-width: 620px) {
-  .wg-layer-bar { box-shadow: none; }
-  .wg-layer-tabs.pc-lens-tabs { gap: 0; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); }
-  .wg-layer-tabs .pc-lens-tab { min-height: 30px; padding: 4px var(--space-3); border-radius: calc(var(--radius-md) - 2px); }
-  .wg-layer-tabs .pc-lens-tab[aria-selected="true"] { background: var(--muted); box-shadow: inset 0 0 0 1px var(--border); }
-}
-
 /* ── Overview: why the mesh cannot form, then one readiness bar ─────────── */
 
 .wg-overview { display: flex; flex-direction: column; gap: var(--space-4); }
