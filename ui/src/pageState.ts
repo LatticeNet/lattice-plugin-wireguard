@@ -33,20 +33,13 @@
  * in an opaque-origin frame, so that write is best effort.
  */
 
-import {
-  PAGE_STATE_KEY_PATTERN,
-  PAGE_STATE_MAX_KEYS,
-  PAGE_STATE_MAX_VALUE_LENGTH,
-  PAGE_STATE_RESERVED_KEYS,
-  validPageState,
-  type PageState,
-} from "@latticenet/plugin-bridge";
+import { PAGE_STATE_MAX_KEYS, PAGE_STATE_MAX_VALUE_LENGTH, validPageState, type PageState } from "@latticenet/plugin-bridge";
 
 export { PAGE_STATE_MAX_VALUE_LENGTH, validPageState, type PageState };
 
+/** One entry under the contract's rules, asked of the bridge's own check. */
 function validEntry(key: string, value: unknown): value is string {
-  return PAGE_STATE_KEY_PATTERN.test(key) && !PAGE_STATE_RESERVED_KEYS.has(key) &&
-    typeof value === "string" && value.length <= PAGE_STATE_MAX_VALUE_LENGTH;
+  return validPageState({ [key]: value }) !== undefined;
 }
 
 /**
