@@ -186,6 +186,14 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 .wg-fleet-table .pc-table[data-stacked="true"] td[data-label="Address"]:has(.wg-absent) { display: none; }
 /* Node and agent only: one line, the agent at the right where a menu would be. */
 .wg-fleet-fit .pc-table[data-stacked="true"] td.wg-agent-cell { order: 1; margin-left: auto; }
+/* A folded row is one band. The chassis tints hover and selection cell by
+   cell, which on a flex row painted blocks behind the name and the menu and
+   left the gaps between cells bare; here the cells stay clear and the row
+   takes the tint. Hover only where a pointer can hover, so a tap does not
+   leave the row tinted after the finger lifts. */
+.wg-fleet-table .pc-table[data-stacked="true"] > tbody > tr.wg-click-row > td, .wg-fleet-table .pc-table[data-stacked="true"] > tbody > tr.wg-click-row > td.pc-name, .wg-fleet-table .pc-table[data-stacked="true"] > tbody > tr.wg-click-row > td.pc-actions { background: transparent; }
+@media (hover: hover) { .wg-fleet-table .pc-table[data-stacked="true"] > tbody > tr.wg-click-row:hover { background-color: var(--pc-hover-solid); } }
+.wg-fleet-table .pc-table[data-stacked="true"] > tbody > tr.wg-click-row[data-selected="true"] { background-color: color-mix(in oklab, var(--primary) 8%, var(--card)); }
 
 /* 44px targets on a coarse pointer (design 23 wave 1). The chassis does this
    for the layer row and the select cells only; the page's own controls and
