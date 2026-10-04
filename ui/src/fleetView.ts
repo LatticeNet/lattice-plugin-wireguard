@@ -119,12 +119,6 @@ export function agentTone(node: WireGuardNode): "healthy" | "error" | "neutral" 
   return state === "online" ? "healthy" : state === "offline" ? "error" : "neutral";
 }
 
-/** "seen 2m ago" under the agent's state; the absolute time goes in the cell's title. */
-export function seenLabel(node: WireGuardNode, now: number): string {
-  const age = ageLabel(node.last_seen, now);
-  return age ? `seen ${age} ago` : "never seen";
-}
-
 export interface FleetNotice {
   tone: "danger" | "warning";
   title: string;
