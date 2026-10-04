@@ -97,6 +97,12 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 
 /* ── Fleet and Mesh: one click target per row ───────────────────────────── */
 
+/* Overlays are fixed to the frame. The workspace spaces its children with a
+   top margin, which also moved the fixed side panel and the modal scrim 16px
+   down from the frame's top edge, leaving a strip of page between the console
+   header and the panel. The chassis owns this rule once the bridge carries it. */
+.pc-workspace > .pc-overlay { margin-top: 0; }
+
 .wg-click-row { cursor: pointer; }
 .pc-table .wg-row-open { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 0; border-radius: var(--radius-sm); padding: 0; color: inherit; background: transparent; font: inherit; font-size: var(--text-body); font-weight: 620; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .wg-click-row:hover .wg-row-open { text-decoration: underline; text-decoration-color: var(--muted-foreground); text-underline-offset: 3px; }
