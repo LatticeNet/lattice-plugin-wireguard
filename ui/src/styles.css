@@ -122,11 +122,6 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
    buttons louder than the data. */
 .pc-table .rm-trigger { color: var(--muted-foreground); }
 .pc-table tr:hover .rm-trigger, .pc-table .rm-trigger[aria-expanded="true"] { color: var(--foreground); }
-/* Overlays are fixed to the frame. The workspace spaces its children with a
-   top margin, which also moved the fixed side panel and the modal scrim 16px
-   down from the frame's top edge, leaving a strip of page between the console
-   header and the panel. The chassis owns this rule once the bridge carries it. */
-.pc-workspace > .pc-overlay { margin-top: 0; }
 
 .wg-click-row { cursor: pointer; }
 .pc-table .wg-row-open { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 0; border-radius: var(--radius-sm); padding: 0; color: inherit; background: transparent; font: inherit; font-size: var(--text-body); font-weight: 620; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
@@ -196,10 +191,12 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 .wg-fleet-table .pc-table[data-stacked="true"] > tbody > tr.wg-click-row[data-selected="true"] { background-color: color-mix(in oklab, var(--primary) 8%, var(--card)); }
 
 /* 44px targets on a coarse pointer (design 23 wave 1). The chassis does this
-   for the layer row and the select cells only; the page's own controls and
-   the chassis buttons and search on this page get it here until the chassis
-   carries it for every control. A folded row is the name's target as a
-   whole, so a tap anywhere on it opens the node; the menu sits above it. */
+   for the layer row, the select cells and the side panel's close only; the
+   page's own controls and the chassis buttons, search and modal close on this
+   page get it here until the chassis carries it for every control. On the
+   side panel's close the chassis rule outweighs this one and also places the
+   X, so the two agree. A folded row is the name's target as a whole, so a tap
+   anywhere on it opens the node; the menu sits above it. */
 @media (pointer: coarse) {
   .pc-workspace .pc-button, .pc-overlay .pc-button, .pc-search input, .plan-form input { min-height: 44px; }
   .pc-overlay .pc-icon-button, .pc-table .rm-trigger { width: 44px; height: 44px; }
