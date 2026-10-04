@@ -80,10 +80,11 @@ describe("the fleet grouped by what each node lacks", () => {
 
   it("drops a column that is blank on every row and says which", () => {
     expect(reportedColumns(production)).toEqual({ address: false, publicKey: false, endpoint: false });
-    expect(missingColumnsNote(reportedColumns(production))).toBe("address, public key and endpoint not reported by any node");
+    expect(missingColumnsNote(reportedColumns(production))).toBe("No node reports an address, a public key or an endpoint, so those columns are left out.");
     const some = [ready("a"), node("b")];
     expect(reportedColumns(some)).toEqual({ address: true, publicKey: true, endpoint: false });
-    expect(missingColumnsNote(reportedColumns(some))).toBe("endpoint not reported by any node");
+    expect(missingColumnsNote(reportedColumns(some))).toBe("No node reports an endpoint, so that column is left out.");
+    expect(missingColumnsNote({ address: false, publicKey: true, endpoint: false })).toBe("No node reports an address or an endpoint, so those columns are left out.");
     expect(missingColumnsNote({ address: true, publicKey: true, endpoint: true })).toBe("");
   });
 });

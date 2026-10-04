@@ -440,7 +440,7 @@ onBeforeUnmount(() => {
          reads as a page that failed to load. -->
     <PcPanel v-else-if="view === 'fleet'" id="pc-panel-fleet" role="tabpanel" aria-labelledby="pc-tab-fleet">
       <template v-if="visibleNodes.length">
-        <p v-if="columnsNote" class="wg-layer-note">Columns no node reports are left out: {{ columnsNote }}.</p>
+        <p v-if="columnsNote" class="wg-layer-note">{{ columnsNote }}</p>
         <FleetTable
           :groups="pagedGroups"
           :totals="groupTotals"
