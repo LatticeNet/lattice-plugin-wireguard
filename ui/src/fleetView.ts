@@ -1,5 +1,5 @@
 import type { AgentCounts } from "./readiness";
-import { hostRoute, type MeshReadiness, type WireGuardNode } from "./wireguardModel";
+import { hostRoute, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
 
 /**
  * What the Fleet layer does with the node list before it is drawn: the
@@ -119,12 +119,6 @@ export function agentTone(node: WireGuardNode): "healthy" | "error" | "neutral" 
   return state === "online" ? "healthy" : state === "offline" ? "error" : "neutral";
 }
 
-/** "seen 2m ago" under the agent's state; the absolute time goes in the cell's title. */
-export function seenLabel(node: WireGuardNode, now: number): string {
-  const age = ageLabel(node.last_seen, now);
-  return age ? `seen ${age} ago` : "never seen";
-}
-
 export interface FleetNotice {
   tone: "danger" | "warning";
   title: string;
@@ -138,4 +132,33 @@ export function fleetNotice(state: { bootError: string; error: string; loaded: n
   if (!state.error) return undefined;
   if (state.loaded > 0) return { tone: "warning", title: "The fleet below is the last good read, not the current one", dismissible: true };
   return { tone: "danger", title: "The fleet could not be read", dismissible: false };
+}
+
+/** "3m ago" beside the agent's state, or "never seen"; the absolute time goes in the cell's title. */
+export function agentAge(node: WireGuardNode, now: number): string {
+  const age = ageLabel(node.last_seen, now);
+  return age ? `${age} ago` : "never seen";
+}
+
+/**
+ * What a gap means for the mesh, said once on the group's shelf so the rows
+ * under it carry only their own facts. Every group that cannot be planned
+ * says so, which is why its rows draw no menu.
+ */
+export function gapConsequence(gap: ReadinessGap): string {
+  switch (gap) {
+    case "ready":
+      return "In the mesh: each gets a host route to every other ready node";
+    case "needs_key":
+      return "Out of the mesh, and nothing to plan, until the agent reports its public key";
+    case "needs_address":
+      return "Out of the mesh, and nothing to plan, until the agent reports its WireGuard address";
+    default:
+      return "Out of the mesh, and nothing to plan, until the agent reports both";
+  }
+}
+
+/** "34 nodes · 32 agents online", over the whole filtered fleet rather than one page. */
+export function gapCountLine(total: { count: number; online: number }): string {
+  return `${total.count} ${total.count === 1 ? "node" : "nodes"} · ${total.online} ${total.online === 1 ? "agent" : "agents"} online`;
 }

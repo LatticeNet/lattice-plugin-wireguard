@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ageLabel, agentState, agentTone, filterNodes, fleetNotice, formatClock, matchesSearch, pageCount, pageOf, pageSlice, proofSegments, proofTitle, seenLabel } from "./fleetView";
+import { ageLabel, agentState, agentTone, filterNodes, fleetNotice, formatClock, matchesSearch, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
@@ -120,11 +120,7 @@ describe("ages and the agent column", () => {
     expect(proofTitle(at, "en-GB")).toBe("Fleet read at 09:00:00 on 30 Sept 2026. Refresh reads it again.");
   });
 
-  it("labels the agent's age and draws offline in the console's red", () => {
-    const seen = "2026-09-30T09:00:00Z";
-    const now = Date.parse(seen) + 120_000;
-    expect(seenLabel(node({ last_seen: seen }), now)).toBe("seen 2m ago");
-    expect(seenLabel(node({}), now)).toBe("never seen");
+  it("draws offline in the console's red", () => {
     expect(agentTone(node({ online: true }))).toBe("healthy");
     expect(agentTone(node({ online: false }))).toBe("error");
     expect(agentTone(node({ online: true, disabled: true }))).toBe("neutral");

@@ -187,14 +187,18 @@ export function reportedColumns(nodes: readonly WireGuardNode[]): ReportedColumn
   };
 }
 
-/** "address, public key and endpoint not reported by any node", for the head that says why those columns left. */
+/**
+ * The one line over the Fleet table that says which columns left and why:
+ * "No node reports an address, a public key or an endpoint, so those
+ * columns are left out." Empty when every column has something in it.
+ */
 export function missingColumnsNote(columns: ReportedColumns): string {
   const missing = [
-    columns.address ? "" : "address",
-    columns.publicKey ? "" : "public key",
-    columns.endpoint ? "" : "endpoint",
+    columns.address ? "" : "an address",
+    columns.publicKey ? "" : "a public key",
+    columns.endpoint ? "" : "an endpoint",
   ].filter(Boolean);
   if (!missing.length) return "";
-  const list = missing.length === 1 ? missing[0]! : `${missing.slice(0, -1).join(", ")} and ${missing.at(-1)}`;
-  return `${list} not reported by any node`;
+  if (missing.length === 1) return `No node reports ${missing[0]}, so that column is left out.`;
+  return `No node reports ${missing.slice(0, -1).join(", ")} or ${missing.at(-1)}, so those columns are left out.`;
 }
