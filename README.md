@@ -18,10 +18,15 @@ cannot form (on a fleet where no agent reports a WireGuard address or key:
 "0 of 34 ready: 34 report no WireGuard address or public key") and the step
 that changes it, then one readiness bar split into ready, one half reported
 and nothing reported. Agent liveness is a separate count: an agent online says
-nothing about the mesh. Fleet lists every node the session may read, grouped
-by what it lacks; a column shows only when some node reports a value for it.
-Mesh lists the ready nodes with the host route each is pinned to in
-`AllowedIPs`.
+nothing about the mesh. Fleet lists every node the session may read, one line
+each, grouped by what it lacks: each group opens on a shelf that names the
+gap, counts its nodes and live agents, and says what the gap means for the
+mesh, so the rows carry only their own facts. A column shows only when some
+node reports a value for it, and the card says which columns were left out;
+with only the node and its agent left, the agent's state sits beside the
+name. Below 480 a row folds: one line with the name and the agent, or two
+when address columns are shown. Mesh lists the ready nodes with the host
+route each is pinned to in `AllowedIPs`.
 
 A row opens the node in a side panel: the interface as reported, its peers,
 and Plan, which asks for the listen port and files a pending approval. When

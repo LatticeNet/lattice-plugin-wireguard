@@ -142,7 +142,6 @@ onBeforeUnmount(() => close(false));
   <button
     ref="trigger"
     class="pc-icon-button rm-trigger"
-    data-bordered="true"
     type="button"
     :aria-label="label"
     :title="label"

@@ -97,6 +97,31 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 
 /* ── Fleet and Mesh: one click target per row ───────────────────────────── */
 
+/* One line per node. A group opens on a shelf: the gap, the counts and what
+   the gap means for the mesh in one line across the table, so the rows carry
+   only their own facts. Words are sans; addresses, keys and ages are mono. */
+.wg-shelf { height: auto; padding-block: var(--space-2); }
+.wg-shelf-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-3); margin: 0; font-size: var(--pc-text-sm); line-height: 20px; }
+.wg-shelf-line strong { font-weight: 650; }
+.wg-shelf-count { color: var(--muted-foreground); font-family: var(--font-mono); font-size: var(--text-mono); font-variant-numeric: tabular-nums; }
+.wg-shelf-note { color: var(--muted-foreground); }
+/* When the table scrolls sideways, the shelf's words stay in the frame. */
+.wg-fleet-table[data-overflow="x"] .wg-shelf-line { position: sticky; left: var(--space-3); max-width: calc(100vw - 2 * var(--space-6)); }
+.wg-agent { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.wg-agent-age { color: var(--muted-foreground); font-family: var(--font-mono); font-size: var(--text-mono); font-variant-numeric: tabular-nums; }
+.wg-th-agent { width: 176px; }
+/* Node and agent only: the node column is held to a width, so the agent's
+   state reads beside the name and the empty room is at the row's end. */
+.wg-fleet-fit th.pc-name { width: 340px; }
+.wg-fleet-fit .wg-th-agent { width: auto; }
+/* What a layer's rows mean, said once at the top of the card where a header
+   used to repeat the layer's name and the tab's count. */
+.wg-layer-note { margin: 0; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); color: var(--muted-foreground); font-size: var(--pc-text-sm); line-height: 1.5; }
+/* The menu trigger is quiet until its row is pointed at or its menu is open,
+   as the console's row menus are; a bordered box on each row drew a column of
+   buttons louder than the data. */
+.pc-table .rm-trigger { color: var(--muted-foreground); }
+.pc-table tr:hover .rm-trigger, .pc-table .rm-trigger[aria-expanded="true"] { color: var(--foreground); }
 /* Overlays are fixed to the frame. The workspace spaces its children with a
    top margin, which also moved the fixed side panel and the modal scrim 16px
    down from the frame's top edge, leaving a strip of page between the console
@@ -107,11 +132,9 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 .pc-table .wg-row-open { display: block; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 0; border-radius: var(--radius-sm); padding: 0; color: inherit; background: transparent; font: inherit; font-size: var(--text-body); font-weight: 620; line-height: 20px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .wg-click-row:hover .wg-row-open { text-decoration: underline; text-decoration-color: var(--muted-foreground); text-underline-offset: 3px; }
 .pc-table tr[data-selected="true"] > td.pc-name, .pc-table tr[data-selected="true"] > td.pc-actions { background-color: color-mix(in oklab, var(--primary) 8%, var(--card)); }
-.wg-absent { color: var(--muted-foreground); font-style: italic; }
-/* A row with nothing to plan says so where its menu would be; the why is its group row and this title. */
-.wg-row-reason { color: var(--muted-foreground); font-size: var(--pc-text-xs); white-space: nowrap; }
-.wg-group-note { height: auto; }
-.pc-table .wg-group-note .pc-group-summary { display: block; white-space: normal; }
+/* Muted, upright: the shelf above already says what the group lacks, so the
+   placeholder recedes rather than repeating it in italics on every row. */
+.wg-absent { color: var(--muted-foreground); }
 .wg-mono { font-family: var(--font-mono); font-size: var(--text-mono); }
 
 /* ── The node panel ─────────────────────────────────────────────────────── */
@@ -142,17 +165,41 @@ body { min-width: 320px; margin: 0; color: var(--foreground); background: var(--
 /* ── Narrow frames ──────────────────────────────────────────────────────── */
 
 @media (max-width: 720px) {
-  .wg-fleet-table th.pc-name, .wg-fleet-table td.pc-name, .wg-mesh-table th.pc-name, .wg-mesh-table td.pc-name { width: 38vw; min-width: 0; max-width: 38vw; }
+  .wg-fleet-table .pc-table:not([data-stacked="true"]) th.pc-name, .wg-fleet-table .pc-table:not([data-stacked="true"]) td.pc-name, .wg-mesh-table th.pc-name, .wg-mesh-table td.pc-name { width: 38vw; min-width: 0; max-width: 38vw; }
   /* Node and agent only: the table fits the frame instead of scrolling. The
      node column takes what the agent and the menu leave (width 100% with
      max-width 0 is the table idiom for "the rest"). Names, the group label
      and the last-seen time wrap rather than ellipsize, so no row loses the
      part of its name that tells it from its neighbour ([Metix]-AWS-HKG and
      [Metix]-AWS-FRA); the node id stays one truncated line, the panel has it. */
-  .wg-fleet-table.wg-fleet-fit th.pc-name, .wg-fleet-table.wg-fleet-fit td.pc-name { width: 100%; max-width: 0; }
-  .wg-fleet-table.wg-fleet-fit .wg-row-open, .wg-fleet-table.wg-fleet-fit .pc-group-row .pc-name strong, .wg-fleet-table.wg-fleet-fit .pc-group-row td.pc-name small { overflow-wrap: anywhere; white-space: normal; }
-  /* 13ch holds "Sep 30, 2026," so the time takes one more line, not four. */
-  .wg-fleet-table.wg-fleet-fit td:not(.pc-name) small { width: auto; min-width: 13ch; white-space: normal; }
+  .wg-fleet-table.wg-fleet-fit .pc-table:not([data-stacked="true"]) th.pc-name, .wg-fleet-table.wg-fleet-fit .pc-table:not([data-stacked="true"]) td.pc-name { width: 100%; max-width: 0; }
+  .wg-fleet-table.wg-fleet-fit .wg-row-open { overflow-wrap: anywhere; white-space: normal; }
+}
+
+/* Below 480 a row with address, key or endpoint columns folds into lines:
+   the node and its menu, then the address and the agent. The key and the
+   endpoint are in the node's panel, one tap away. */
+.wg-fleet-table .pc-table[data-stacked="true"] tr.wg-click-row { position: relative; row-gap: 2px; }
+.wg-fleet-table .pc-table[data-stacked="true"] td.pc-name[data-level="1"] { padding-left: 0; }
+.wg-fleet-table .pc-table[data-stacked="true"] td.wg-shelf { padding: 0; }
+/* The shelf already says the address is missing; a folded row does not repeat it. */
+.wg-fleet-table .pc-table[data-stacked="true"] td[data-label="Address"]:has(.wg-absent) { display: none; }
+/* Node and agent only: one line, the agent at the right where a menu would be. */
+.wg-fleet-fit .pc-table[data-stacked="true"] td.wg-agent-cell { order: 1; margin-left: auto; }
+
+/* 44px targets on a coarse pointer (design 23 wave 1). The chassis does this
+   for the layer row and the select cells only; the page's own controls and
+   the chassis buttons and search on this page get it here until the chassis
+   carries it for every control. A folded row is the name's target as a
+   whole, so a tap anywhere on it opens the node; the menu sits above it. */
+@media (pointer: coarse) {
+  .pc-workspace .pc-button, .pc-overlay .pc-button, .pc-search input, .plan-form input { min-height: 44px; }
+  .pc-overlay .pc-icon-button, .pc-table .rm-trigger { width: 44px; height: 44px; }
+  .pc-table th .pc-sort { min-height: 44px; }
+  .wg-fleet-table .pc-table[data-stacked="true"] .wg-row-open::after { position: absolute; inset: 0; content: ""; }
+  .wg-fleet-table .pc-table[data-stacked="true"] td[data-stack="actions"] { position: relative; z-index: 1; }
+  .wg-fleet-table .pc-table[data-stacked="true"] tr.wg-click-row { min-height: 44px; }
+  .wg-fleet-table .pc-table[data-stacked="true"] .rm-trigger { margin-block: -12px; }
 }
 
 @media (max-width: 620px) {

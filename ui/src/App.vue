@@ -23,7 +23,6 @@ import { CheckCircle2, Copy, FileCode2, KeyRound, Network, RefreshCw, Route, Shi
 import { BridgeClient, canCall, type HostInit } from "@latticenet/plugin-bridge";
 import {
   PcButton,
-  PcCount,
   PcEmptyState,
   PcLensTab,
   PcLensTabs,
@@ -32,7 +31,6 @@ import {
   PcPageHeader,
   PcPagination,
   PcPanel,
-  PcPanelHeader,
   PcProofLine,
   PcSearchField,
   PcSidePanel,
@@ -436,12 +434,13 @@ onBeforeUnmount(() => {
       <ReadinessOverview :items="attention" :bar="bar" :total="readiness.total" :agents="agents" :can-navigate="Boolean(consoleOrigin)" @act="onAttention" />
     </section>
 
+    <!-- No card header: the selected layer names this list and the proof line
+         carries its counts. The one thing the card still has to say is why
+         columns are missing, because a table with two columns otherwise
+         reads as a page that failed to load. -->
     <PcPanel v-else-if="view === 'fleet'" id="pc-panel-fleet" role="tabpanel" aria-labelledby="pc-tab-fleet">
-      <PcPanelHeader title="Fleet nodes" :description="columnsNote ? `Grouped by what each node lacks. Columns no node reports are left out: ${columnsNote}.` : 'Grouped by what each node lacks. Open a node for its interface facts, its peers and its plan.'">
-        <PcCount :value="`${readiness.total} nodes · ${readiness.ready} mesh-ready`" />
-      </PcPanelHeader>
-
       <template v-if="visibleNodes.length">
+        <p v-if="columnsNote" class="wg-layer-note">Columns no node reports are left out: {{ columnsNote }}.</p>
         <FleetTable
           :groups="pagedGroups"
           :totals="groupTotals"
@@ -476,9 +475,9 @@ onBeforeUnmount(() => {
     </PcPanel>
 
     <PcPanel v-else id="pc-panel-mesh" role="tabpanel" aria-labelledby="pc-tab-mesh">
-      <PcPanelHeader title="Mesh" description="Every mesh-ready node gets a host route to each of the others. Open a node for its peers and its plan.">
-        <PcCount :value="readyNodes.length ? `${readyNodes.length} mesh-ready · ${peerCount} ${peerCount === 1 ? 'peer' : 'peers'} in each config` : '0 mesh-ready'" />
-      </PcPanelHeader>
+      <p class="wg-layer-note">
+        <template v-if="readyNodes.length">{{ readyNodes.length }} mesh-ready, {{ peerCount }} {{ peerCount === 1 ? 'peer' : 'peers' }} in each config. </template>Every mesh-ready node gets a host route to each of the others. Open a node for its peers and its plan.
+      </p>
       <MeshList v-if="readyNodes.length" :nodes="readyNodes" :active-id="openId" @open="openPanel" />
       <PcEmptyState v-else title="No node is mesh-ready">
         <template #icon><Spline :size="26" aria-hidden="true" /></template>
