@@ -40,7 +40,8 @@ const props = defineProps<{
   canPlan: boolean;
   /** Now, for the agents' ages. */
   now: number;
-  sortKey: NodeSortKey;
+  /** The column whose header marks the order; none while a query sorts by a field with no column. */
+  sortKey?: NodeSortKey;
   sortDirection: "asc" | "desc";
 }>();
 
@@ -68,6 +69,8 @@ function lastSeen(value?: string): string {
   if (!value) return "not reported";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "not reported";
+  // The server sends the zero time for a node that never reported.
+  if (date.getUTCFullYear() < 2000) return "never";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 

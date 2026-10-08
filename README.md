@@ -28,12 +28,25 @@ name. Below 480 a row folds: one line with the name and the agent, or two
 when address columns are shown. Mesh lists the ready nodes with the host
 route each is pinned to in `AllowedIPs`.
 
+Fleet and Mesh each have a query field, the console's list query from
+`@latticenet/plugin-bridge/query` in the chassis's `PcQueryBar`
+(`ui/src/listQuery.ts`). A bare word searches node name and id, the
+WireGuard address and its host route, endpoint, public key and public IP.
+The page's own fields are `config` (ready, partial, missing), `lacks`
+(address, key), `is:ready`, `address`, `endpoint`, `port` and `key`, then
+the shared node fields this payload can answer: `name`, `id`, `ip` (the
+public address), `status`, `is:online|offline|disabled|never` and
+`last_seen`. Mesh leaves the readiness fields out, since every row there is
+ready. `sort:field` orders the rows; on Fleet a header click takes the order
+back. While the text does not parse, the rows stay on the last valid query,
+dimmed and inert, and the field says what is wrong.
+
 A row opens the node in a side panel: the interface as reported, its peers,
 and Plan, which asks for the listen port and files a pending approval. When
 Plan is disabled, the panel and the row menu say why beside it. The layer,
-the open node and the Fleet search live in the console address through the
-page-state contract (design 22), so a reload or a pasted link lands on the
-same panel. A failed read shows no counts. The page reads when it opens and
+the open node and the query on screen live in the console address through
+the page-state contract (design 22), so a reload or a pasted link lands on
+the same panel. A failed read shows no counts. The page reads when it opens and
 when Refresh is pressed, never on a timer; one clock re-renders the relative
 ages every 5 seconds while the page is visible and stops while it is hidden.
 
@@ -108,11 +121,12 @@ link did.
 
 The page is built on the shared plugin chassis, `@latticenet/plugin-bridge/chassis`
 (see `docs/design-plugin-chassis.md` in the `lattice` repo). `ui/package.json`
-pins `@latticenet/plugin-bridge` `0.2.0-alpha.1` from the package registry
-(GitHub Packages, `ui/.npmrc`): its client passes `pageState` and sends the page
-state back, and its chassis carries the layer row, the non-modal side panel and
-the table fixes this page used to patch. That version resolves once the bridge
-release is published; until then `npm ci` cannot install it.
+pins `@latticenet/plugin-bridge` `0.2.0-alpha.3` from the package registry
+(GitHub Packages, `ui/.npmrc`), and the lock holds it to that release's tarball
+URL and sha512 integrity (`ui/src/bridgeLock.test.ts` fails otherwise). Its
+client passes `pageState` and sends the page state back, its chassis carries the
+layer row, the non-modal side panel and the table fixes this page used to patch.
+`npm ci` needs a `GITHUB_TOKEN` that can read the LatticeNet packages.
 
 Build and sign with Go `1.26.4`, Node `22`, the deterministic plugin packer, and
 the trusted LatticeNet Ed25519 publisher seed. Never commit the seed.

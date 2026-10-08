@@ -11,6 +11,7 @@
  * tiles of zeros and a table of "not reported". DOM-free, so the tests run
  * without jsdom.
  */
+import { agentState } from "./fleetView";
 import { readinessGap, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
 
 // ── agents ────────────────────────────────────────────────────────────────
@@ -20,15 +21,17 @@ export interface AgentCounts {
   online: number;
   offline: number;
   disabled: number;
+  /** Enrolled but never reported: the zero time the server sends. */
+  never: number;
 }
 
-/** Agent liveness, which is a different fact from mesh readiness. */
+/** Agent liveness, which is a different fact from mesh readiness; the same word per node as the column (agentState). */
 export function agentCounts(nodes: readonly WireGuardNode[]): AgentCounts {
-  const counts: AgentCounts = { total: nodes.length, online: 0, offline: 0, disabled: 0 };
+  const counts: AgentCounts = { total: nodes.length, online: 0, offline: 0, disabled: 0, never: 0 };
   for (const node of nodes) {
-    if (node.disabled) counts.disabled += 1;
-    else if (node.online) counts.online += 1;
-    else counts.offline += 1;
+    const state = agentState(node);
+    if (state === "never reported") counts.never += 1;
+    else counts[state] += 1;
   }
   return counts;
 }

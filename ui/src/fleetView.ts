@@ -1,32 +1,17 @@
+import { nodeStatusOf } from "@latticenet/plugin-bridge/query";
+
+import { nodeFacts } from "./listQuery";
 import type { AgentCounts } from "./readiness";
-import { hostRoute, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
+import type { MeshReadiness, ReadinessGap, WireGuardNode } from "./wireguardModel";
 
 /**
- * What the Fleet layer does with the node list before it is drawn: the
- * search, the page arithmetic and the proof line. DOM-free, so the tests run
- * without jsdom and the template stays a template.
+ * What the Fleet layer does with the node list before it is drawn: the page
+ * arithmetic and the proof line. The query is listQuery.ts. DOM-free, so the
+ * tests run without jsdom and the template stays a template.
  */
 
 /** 50 rows is a screen and a half at 40px, and holds the whole fleet today; the pager takes over past it. */
 export const PAGE_SIZE = 50;
-
-/**
- * The search covers what the placeholder promises: node name and id, the
- * reported address and the host route derived from it, the endpoint, the
- * public key (the full value, since the cell shows it redacted) and the public
- * IP. Case-insensitive substring; an empty term matches everything.
- */
-export function matchesSearch(node: WireGuardNode, term: string): boolean {
-  const needle = term.trim().toLowerCase();
-  if (!needle) return true;
-  const haystack = [node.name, node.node_id, node.address, hostRoute(node.address), node.endpoint, node.public_key, node.public_ip];
-  return haystack.some((value) => !!value && value.toLowerCase().includes(needle));
-}
-
-export function filterNodes(nodes: readonly WireGuardNode[], term: string): WireGuardNode[] {
-  if (!term.trim()) return [...nodes];
-  return nodes.filter((node) => matchesSearch(node, term));
-}
 
 export function pageCount(total: number, size = PAGE_SIZE): number {
   return Math.max(1, Math.ceil(total / size));
@@ -105,12 +90,22 @@ export function displayName(node: WireGuardNode): string {
   return node.name || node.node_id;
 }
 
-export type AgentState = "online" | "offline" | "disabled";
+export type AgentState = "online" | "offline" | "disabled" | "never reported";
 
-/** The word beside the dot. Colour is never the only carrier (design 4.7). */
+/**
+ * The word beside the dot. Colour is never the only carrier (design 4.7).
+ * The console's rule (nodeStatusOf), so the column and `status:` in the query
+ * agree: a node whose last report is the zero time the server sends for one
+ * that never reported is "never reported", not offline.
+ */
 export function agentState(node: WireGuardNode): AgentState {
-  if (node.disabled) return "disabled";
-  return node.online ? "online" : "offline";
+  switch (nodeStatusOf(nodeFacts(node))) {
+    case "disabled": return "disabled";
+    case "online":
+    case "degraded": return "online";
+    case "never_reported": return "never reported";
+    default: return "offline";
+  }
 }
 
 /** The dot's tone. Offline is the console's offline red, not a warning amber. */
@@ -136,7 +131,7 @@ export function fleetNotice(state: { bootError: string; error: string; loaded: n
 
 /** "3m ago" beside the agent's state, or "never seen"; the absolute time goes in the cell's title. */
 export function agentAge(node: WireGuardNode, now: number): string {
-  const age = ageLabel(node.last_seen, now);
+  const age = agentState(node) === "never reported" ? "" : ageLabel(node.last_seen, now);
   return age ? `${age} ago` : "never seen";
 }
 

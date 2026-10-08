@@ -52,7 +52,7 @@ const emit = defineEmits<{ (event: "act", kind: AttentionActionKind): void }>();
         </li>
       </ul>
       <p class="wg-agents">
-        Agents: <strong>{{ agents.online }}</strong> online · <strong>{{ agents.offline }}</strong> offline<template v-if="agents.disabled"> · <strong>{{ agents.disabled }}</strong> disabled</template>. An agent online says nothing about the mesh on its own.
+        Agents: <strong>{{ agents.online }}</strong> online · <strong>{{ agents.offline }}</strong> offline<template v-if="agents.disabled"> · <strong>{{ agents.disabled }}</strong> disabled</template><template v-if="agents.never"> · <strong>{{ agents.never }}</strong> never reported</template>. An agent online says nothing about the mesh on its own.
       </p>
     </div>
   </PcPanel>
