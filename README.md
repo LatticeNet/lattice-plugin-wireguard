@@ -39,7 +39,8 @@ public address), `status`, `is:online|offline|disabled|never` and
 `last_seen`. Mesh leaves the readiness fields out, since every row there is
 ready. `sort:field` orders the rows; on Fleet a header click takes the order
 back. While the text does not parse, the rows stay on the last valid query,
-dimmed and inert, and the field says what is wrong.
+dimmed and inert, and the field says what is wrong; when that query kept no
+rows, the no-match state stays live, so its Clear the query works.
 
 A row opens the node in a side panel: the interface as reported, its peers,
 and Plan, which asks for the listen port and files a pending approval. When

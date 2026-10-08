@@ -65,3 +65,17 @@ export const PANEL_TITLE: Record<NodePanelState, string> = {
   unread: "Node not read",
   missing: "Node not found",
 };
+
+/**
+ * Whether a list layer's panel is dimmed and inert. While the query on
+ * screen does not read, the rows below answer an earlier one, so the panel
+ * takes no input and nobody opens or plans a node for a query they cannot
+ * see. Only while it shows rows, though: when the last query that read kept
+ * none, the panel holds the no-match state, whose one action is Clear the
+ * query, and an inert panel would leave that button dead exactly when the
+ * operator reaches for it. Mesh's no-mesh-ready state has no rows and does
+ * not answer the query, so it is never dimmed by it either.
+ */
+export function listPanelStale(input: { invalid: boolean; rows: number }): boolean {
+  return input.invalid && input.rows > 0;
+}
