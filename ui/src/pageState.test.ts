@@ -94,6 +94,7 @@ describe("the WireGuard page's own state", () => {
     [state({ view: "fleet" }), { view: "fleet" }],
     [state({ view: "fleet", q: "hkg", open: "node-hkg-edge-01" }), { view: "fleet", open: "node-hkg-edge-01", q: "hkg" }],
     [state({ view: "mesh" }), { view: "mesh" }],
+    [state({ view: "mesh", q: "-endpoint:* sort:address" }), { view: "mesh", q: "-endpoint:* sort:address" }],
     [state({ open: "node-x" }), { open: "node-x" }],
   ])("round-trips %#", (value, encoded) => {
     expect(encodeWgState(value)).toEqual(encoded);
@@ -101,8 +102,8 @@ describe("the WireGuard page's own state", () => {
     expect(decodeWgState(encoded)).toEqual(value);
   });
 
-  it("keeps the Fleet search out of another layer's link", () => {
-    expect(encodeWgState(state({ view: "mesh", q: "hkg" }))).toEqual({ view: "mesh" });
+  it("carries the query of the list layer in view, and none on the Overview", () => {
+    expect(encodeWgState(state({ view: "mesh", q: "hkg" }))).toEqual({ view: "mesh", q: "hkg" });
     expect(encodeWgState(state({ view: "overview", q: "hkg" }))).toEqual({});
     expect(encodeWgState(state({ view: "fleet", q: "  hkg  " }))).toEqual({ view: "fleet", q: "hkg" });
     expect(encodeWgState(state({ view: "fleet", q: "x".repeat(PAGE_STATE_MAX_VALUE_LENGTH + 1) }))).toEqual({ view: "fleet" });

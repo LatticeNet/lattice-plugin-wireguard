@@ -1,32 +1,14 @@
 import type { AgentCounts } from "./readiness";
-import { hostRoute, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
+import type { MeshReadiness, ReadinessGap, WireGuardNode } from "./wireguardModel";
 
 /**
- * What the Fleet layer does with the node list before it is drawn: the
- * search, the page arithmetic and the proof line. DOM-free, so the tests run
- * without jsdom and the template stays a template.
+ * What the Fleet layer does with the node list before it is drawn: the page
+ * arithmetic and the proof line. The query is listQuery.ts. DOM-free, so the
+ * tests run without jsdom and the template stays a template.
  */
 
 /** 50 rows is a screen and a half at 40px, and holds the whole fleet today; the pager takes over past it. */
 export const PAGE_SIZE = 50;
-
-/**
- * The search covers what the placeholder promises: node name and id, the
- * reported address and the host route derived from it, the endpoint, the
- * public key (the full value, since the cell shows it redacted) and the public
- * IP. Case-insensitive substring; an empty term matches everything.
- */
-export function matchesSearch(node: WireGuardNode, term: string): boolean {
-  const needle = term.trim().toLowerCase();
-  if (!needle) return true;
-  const haystack = [node.name, node.node_id, node.address, hostRoute(node.address), node.endpoint, node.public_key, node.public_ip];
-  return haystack.some((value) => !!value && value.toLowerCase().includes(needle));
-}
-
-export function filterNodes(nodes: readonly WireGuardNode[], term: string): WireGuardNode[] {
-  if (!term.trim()) return [...nodes];
-  return nodes.filter((node) => matchesSearch(node, term));
-}
 
 export function pageCount(total: number, size = PAGE_SIZE): number {
   return Math.max(1, Math.ceil(total / size));

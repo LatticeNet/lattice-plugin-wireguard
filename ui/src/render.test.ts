@@ -66,6 +66,11 @@ describe("the Fleet table, rendered", () => {
     expect(html).toMatch(/data-tone="error"[^>]*>offline<\/span><span class="wg-agent-age">7d ago<\/span>/);
   });
 
+  it("marks the column the rows follow, and none while a query sorts by a field with no column", async () => {
+    expect(await render(FleetTable, { ...props(rich), sortKey: "node", sortDirection: "desc" })).toMatch(/aria-sort="descending"[^>]*>[\s\S]*?Node/);
+    expect(await render(FleetTable, { ...props(rich), sortKey: undefined })).not.toContain("aria-sort=");
+  });
+
   it("draws no actions column when nothing on the page can be planned", async () => {
     const html = await render(FleetTable, props(production));
     expect(html).not.toContain("pc-actions");

@@ -40,7 +40,8 @@ const props = defineProps<{
   canPlan: boolean;
   /** Now, for the agents' ages. */
   now: number;
-  sortKey: NodeSortKey;
+  /** The column whose header marks the order; none while a query sorts by a field with no column. */
+  sortKey?: NodeSortKey;
   sortDirection: "asc" | "desc";
 }>();
 

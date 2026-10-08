@@ -2,7 +2,9 @@
  * The WireGuard page's own state, as the console address carries it.
  *
  * `view` is the layer (Overview is the default and is left out of the
- * address), `open` the node whose panel is open, and `q` the Fleet search.
+ * address), `open` the node whose panel is open, and `q` the list query of
+ * the layer in view: Fleet and Mesh each keep their own, and the address
+ * carries the one on screen.
  * Links from before the layers still land: `lens=mesh` is the Mesh layer,
  * `lens=fleet` the Fleet, and `expand=<id>` opens that node's panel.
  */
@@ -30,8 +32,8 @@ export function encodeWgState(state: WgPageState): PageState {
   const out: PageState = {};
   putState(out, "view", state.view, DEFAULT_WG_STATE.view);
   putState(out, "open", state.open);
-  // Only Fleet has a search field; a search typed there is not carried into another layer's link.
-  if (state.view === "fleet") putState(out, "q", state.q.trim());
+  // Overview has no list; a query typed on a layer is not carried into another layer's link.
+  if (state.view !== "overview") putState(out, "q", state.q.trim());
   return out;
 }
 

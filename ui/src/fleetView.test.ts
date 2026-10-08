@@ -1,47 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { ageLabel, agentState, agentTone, filterNodes, fleetNotice, formatClock, matchesSearch, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
+import { ageLabel, agentState, agentTone, fleetNotice, formatClock, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
 function node(overrides: Partial<WireGuardNode> = {}): WireGuardNode {
   return { node_id: "node-hkg-edge-01", name: "hkg-edge-01", online: true, configuration: "missing", ...overrides };
 }
-
-describe("matchesSearch", () => {
-  const ready = node({
-    address: "10.66.0.7",
-    public_key: "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefg=",
-    endpoint: "hkg-edge-01.example.invalid:51820",
-    public_ip: "203.0.113.7",
-  });
-
-  it("matches everything on an empty or blank term", () => {
-    expect(matchesSearch(ready, "")).toBe(true);
-    expect(matchesSearch(ready, "   ")).toBe(true);
-  });
-
-  it("matches name, id, address, host route, endpoint, key and public IP, case-insensitively", () => {
-    expect(matchesSearch(ready, "HKG-EDGE")).toBe(true);
-    expect(matchesSearch(ready, "node-hkg")).toBe(true);
-    expect(matchesSearch(ready, "10.66.0.7")).toBe(true);
-    expect(matchesSearch(ready, "10.66.0.7/32")).toBe(true);
-    expect(matchesSearch(ready, ":51820")).toBe(true);
-    expect(matchesSearch(ready, "qrstuvwx")).toBe(true);
-    expect(matchesSearch(ready, "203.0.113.7")).toBe(true);
-  });
-
-  it("does not match a node that reports none of the fields", () => {
-    expect(matchesSearch(node(), "10.66")).toBe(false);
-    expect(matchesSearch(node(), "51820")).toBe(false);
-  });
-
-  it("filters a list without reordering it", () => {
-    const nodes = [node({ name: "a-1", node_id: "n1" }), node({ name: "b-1", node_id: "n2", address: "10.0.0.2" }), node({ name: "a-2", node_id: "n3" })];
-    expect(filterNodes(nodes, "a-").map((item) => item.node_id)).toEqual(["n1", "n3"]);
-    expect(filterNodes(nodes, "").map((item) => item.node_id)).toEqual(["n1", "n2", "n3"]);
-  });
-});
 
 describe("paging", () => {
   it("never reports fewer than one page", () => {

@@ -6,9 +6,11 @@
  * Layered like every console area (design 22 section 2): Overview first,
  * with why the mesh cannot form and the step that changes it, then one
  * readiness bar; then Fleet, the nodes grouped by what they lack; then Mesh,
- * the ready nodes as a compact list. A node opens in a side panel from any
- * layer, and the layer, the open node and the Fleet search live in the
- * console's address, so a reload or a pasted link lands on the same place.
+ * the ready nodes as a compact list. Fleet and Mesh each narrow and order
+ * their rows with the console's list query (listQuery.ts). A node opens in a
+ * side panel from any layer, and the layer, the open node and the query on
+ * screen live in the console's address, so a reload or a pasted link lands
+ * on the same place.
  *
  * The page reads when it opens and when the operator presses Refresh, and
  * never on a timer: a background read re-sorts the fleet and moves rows
@@ -32,13 +34,15 @@ import {
   PcPagination,
   PcPanel,
   PcProofLine,
-  PcSearchField,
+  PcQueryBar,
   PcSidePanel,
   PcSkeleton,
   PcToolbar,
   PcWorkspace,
+  useListQuery,
   useOverlayEscape,
 } from "@latticenet/plugin-bridge/chassis";
+import { withoutSorts } from "@latticenet/plugin-bridge/query";
 
 import FleetTable from "./components/FleetTable.vue";
 import MeshList from "./components/MeshList.vue";
@@ -46,8 +50,9 @@ import NodeFacts from "./components/NodeFacts.vue";
 import ReadinessOverview from "./components/ReadinessOverview.vue";
 import { useNow } from "./clock";
 import { useFleetRead } from "./fleetRead";
-import { PAGE_SIZE, agentState, displayName, filterNodes, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
+import { PAGE_SIZE, agentState, displayName, fleetNotice, pageCount, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { useHandshakeTimeout } from "./handshakeTimeout";
+import { FLEET_EXAMPLES, FLEET_SCHEMA, MESH_EXAMPLES, MESH_SCHEMA, querySortMark } from "./listQuery";
 import { TASKS_ROUTE, consoleOriginFromHash, postNavigate } from "./navigate";
 import {
   createStateSender,
@@ -88,7 +93,7 @@ const { nodes, observedAt, error, loading, refreshing, refresh: readFleet } = us
   async () => (await call<{ nodes: WireGuardNode[] }>("overview")).nodes ?? [],
 );
 
-// ── page state: layer, open node, Fleet search ──────────────────────────────
+// ── page state: layer, open node, the layer's query ─────────────────────────
 //
 // The console's address carries them (pageState.ts). Before the host says
 // where the operator was, the page starts from its own document query: empty
@@ -96,16 +101,20 @@ const { nodes, observedAt, error, loading, refreshing, refresh: readFleet } = us
 // an old `?lens=mesh` link to the frame itself.
 const startState = decodeWgState(documentPageState());
 const view = ref<WgView>(startState.view);
-const search = ref(startState.q);
+// Each list layer keeps its own query; the address carries the one in view.
+const fleetText = ref(startState.view === "fleet" ? startState.q : "");
+const meshText = ref(startState.view === "mesh" ? startState.q : "");
 const openId = ref(startState.open);
 
 function applyState(state: WgPageState): void {
   view.value = state.view;
-  search.value = state.q;
+  fleetText.value = state.view === "fleet" ? state.q : "";
+  meshText.value = state.view === "mesh" ? state.q : "";
   openId.value = state.open;
 }
 
-const pageState = computed<PageState>(() => encodeWgState({ view: view.value, open: openId.value, q: search.value }));
+const shownText = computed(() => (view.value === "fleet" ? fleetText.value : view.value === "mesh" ? meshText.value : ""));
+const pageState = computed<PageState>(() => encodeWgState({ view: view.value, open: openId.value, q: shownText.value }));
 
 /** The console that embedded this frame, for asking it to navigate (navigate.ts). */
 const consoleOrigin = consoleOriginFromHash(window.location.hash);
@@ -182,29 +191,43 @@ function onAttention(kind: AttentionActionKind): void {
 const sortKey = ref<NodeSortKey>("status");
 const sortDirection = ref<SortDirection>("asc");
 const sortedNodes = computed(() => sortNodes(nodes.value, sortKey.value, sortDirection.value));
-const visibleNodes = computed(() => filterNodes(sortedNodes.value, search.value));
+/*
+ * The query runs over the header's order and keeps it unless it sorts. No
+ * `now`: ages are measured when the rows or the text change, so the clock
+ * never drops a row from under the pointer, as no timer re-reads the fleet.
+ */
+const fleetQuery = useListQuery(sortedNodes, FLEET_SCHEMA, fleetText);
+const visibleNodes = fleetQuery.rows;
 const columns = computed(() => reportedColumns(visibleNodes.value));
 const columnsNote = computed(() => missingColumnsNote(reportedColumns(nodes.value)));
 const page = ref(1);
 const pages = computed(() => pageCount(visibleNodes.value.length));
 const pagedGroups = computed(() => gapGroups(pageSlice(visibleNodes.value, page.value)));
-/* Group rows carry sizes over every node the search keeps, not just this page. */
+/* Group rows carry sizes over every node the query keeps, not just this page. */
 const groupTotals = computed(() => new Map(gapGroups(visibleNodes.value).map((group) => [group.gap, { count: group.nodes.length, online: group.online }])));
 const pageFrom = computed(() => (visibleNodes.value.length ? (page.value - 1) * PAGE_SIZE + 1 : 0));
 const pageTo = computed(() => Math.min(visibleNodes.value.length, page.value * PAGE_SIZE));
-const searching = computed(() => search.value.trim() !== "");
+const fleetSearching = computed(() => fleetText.value.trim() !== "");
+const fleetNarrowed = computed(() => visibleNodes.value.length < nodes.value.length);
 
-watch(search, () => { page.value = 1; });
+watch(fleetText, () => { page.value = 1; });
 watch(pages, (count) => { if (page.value > count) page.value = count; });
 
+/** The header that marks the order: the query's while it sorts, else the header's own. */
+const headerSort = computed(() => (fleetQuery.sorted.value ? querySortMark(fleetQuery.active.value.sorts) : { key: sortKey.value, direction: sortDirection.value }));
+
+/** A header click takes the order back from a query that sorts, starting from the order on screen. */
 function toggleSort(key: NodeSortKey): void {
-  if (sortKey.value === key) {
-    sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
-    return;
-  }
+  const shown = headerSort.value;
+  if (fleetQuery.sorted.value) fleetText.value = withoutSorts(fleetText.value);
   sortKey.value = key;
-  sortDirection.value = "asc";
+  sortDirection.value = shown?.key === key && shown.direction === "asc" ? "desc" : "asc";
 }
+
+// ── Mesh ────────────────────────────────────────────────────────────────────
+
+const meshQuery = useListQuery(readyNodes, MESH_SCHEMA, meshText);
+const meshSearching = computed(() => meshText.value.trim() !== "");
 
 // ── the node panel ──────────────────────────────────────────────────────────
 
@@ -379,19 +402,40 @@ onBeforeUnmount(() => {
 
     <!-- The layers: an underline row of their own (design review of wave 1,
          "Tab decision"), which keeps the selected layer in view itself, again
-         when the counts land. Only Fleet has a toolbar, and only over rows or
-         a search (design 23 section 3.7). -->
+         when the counts land. Fleet and Mesh each have a toolbar with their
+         query, only over rows or a query (design 23 section 3.7); the count
+         sits inside the field's end. -->
     <PcLensTabs v-model="view" variant="layer" label="WireGuard layers">
       <PcLensTab value="overview" label="Overview" />
       <PcLensTab value="fleet" label="Fleet" :count="landed ? readiness.total : null" />
       <PcLensTab value="mesh" label="Mesh" :count="landed ? readyNodes.length : null" />
     </PcLensTabs>
 
-    <PcToolbar v-if="view === 'fleet' && landed && (nodes.length || searching)" label="Fleet toolbar">
+    <PcToolbar v-if="view === 'fleet' && landed && (nodes.length || fleetSearching)" label="Fleet toolbar">
       <template #search>
-        <PcSearchField v-model="search" label="Search fleet" placeholder="Search node, address, endpoint or key" />
+        <PcQueryBar
+          v-model="fleetText"
+          :query="fleetQuery"
+          :count="{ shown: visibleNodes.length, total: nodes.length }"
+          label="Search, filter and sort the fleet"
+          placeholder="Search, or filter like lacks:key is:offline sort:name"
+          storage-key="wireguard.fleet"
+          :examples="FLEET_EXAMPLES"
+        />
       </template>
-      <template v-if="searching" #note>{{ visibleNodes.length }} of {{ readiness.total }} nodes match</template>
+    </PcToolbar>
+    <PcToolbar v-else-if="view === 'mesh' && landed && (readyNodes.length || meshSearching)" label="Mesh toolbar">
+      <template #search>
+        <PcQueryBar
+          v-model="meshText"
+          :query="meshQuery"
+          :count="{ shown: meshQuery.rows.value.length, total: readyNodes.length }"
+          label="Search, filter and sort the mesh"
+          placeholder="Search, or filter like -endpoint:* sort:address"
+          storage-key="wireguard.mesh"
+          :examples="MESH_EXAMPLES"
+        />
+      </template>
     </PcToolbar>
 
     <PcPanel v-if="handshakeExpired && !init && !bootError">
@@ -438,7 +482,16 @@ onBeforeUnmount(() => {
          carries its counts. The one thing the card still has to say is why
          columns are missing, because a table with two columns otherwise
          reads as a page that failed to load. -->
-    <PcPanel v-else-if="view === 'fleet'" id="pc-panel-fleet" role="tabpanel" aria-labelledby="pc-tab-fleet">
+    <!-- While the query is invalid the rows answer the last valid one, so
+         the panel dims and takes no input (data-stale, inert). -->
+    <PcPanel
+      v-else-if="view === 'fleet'"
+      id="pc-panel-fleet"
+      role="tabpanel"
+      aria-labelledby="pc-tab-fleet"
+      :data-stale="fleetQuery.invalid.value ? 'true' : undefined"
+      :inert="fleetQuery.invalid.value || undefined"
+    >
       <template v-if="visibleNodes.length">
         <p v-if="columnsNote" class="wg-layer-note">{{ columnsNote }}</p>
         <FleetTable
@@ -448,8 +501,8 @@ onBeforeUnmount(() => {
           :active-id="openId"
           :can-plan="canPlan"
           :now="now"
-          :sort-key="sortKey"
-          :sort-direction="sortDirection"
+          :sort-key="headerSort?.key"
+          :sort-direction="headerSort?.direction ?? 'asc'"
           @open="openPanel"
           @plan="openPlan"
           @sort="toggleSort"
@@ -462,23 +515,35 @@ onBeforeUnmount(() => {
           :to="pageTo"
           :total="visibleNodes.length"
           noun="Nodes"
-          :note="searching ? 'matching the search' : ''"
+          :note="fleetNarrowed ? 'matching the query' : ''"
           label="Fleet pagination"
         />
       </template>
 
-      <PcEmptyState v-else kind="no-match" title="No node matches that search">
+      <PcEmptyState v-else kind="no-match" title="No node matches that query">
         <template #icon><Network :size="26" aria-hidden="true" /></template>
-        <p>Nothing in {{ readiness.total }} nodes matches <span class="pc-mono">{{ search.trim() }}</span>. The search covers node name and id, address, endpoint and public key.</p>
-        <template #actions><PcButton @click="search = ''">Clear the search</PcButton></template>
+        <p>Nothing in {{ readiness.total }} nodes matches <span class="pc-mono">{{ fleetQuery.active.value.source.trim() }}</span>. A bare word searches node name and id, address, endpoint, public key and public IP; the help beside the field lists the fields.</p>
+        <template #actions><PcButton @click="fleetText = ''">Clear the query</PcButton></template>
       </PcEmptyState>
     </PcPanel>
 
-    <PcPanel v-else id="pc-panel-mesh" role="tabpanel" aria-labelledby="pc-tab-mesh">
+    <PcPanel
+      v-else
+      id="pc-panel-mesh"
+      role="tabpanel"
+      aria-labelledby="pc-tab-mesh"
+      :data-stale="meshQuery.invalid.value ? 'true' : undefined"
+      :inert="meshQuery.invalid.value || undefined"
+    >
       <p class="wg-layer-note">
         <template v-if="readyNodes.length">{{ readyNodes.length }} mesh-ready, {{ peerCount }} {{ peerCount === 1 ? 'peer' : 'peers' }} in each config. </template>Every mesh-ready node gets a host route to each of the others. Open a node for its peers and its plan.
       </p>
-      <MeshList v-if="readyNodes.length" :nodes="readyNodes" :active-id="openId" @open="openPanel" />
+      <MeshList v-if="meshQuery.rows.value.length" :nodes="meshQuery.rows.value" :active-id="openId" @open="openPanel" />
+      <PcEmptyState v-else-if="readyNodes.length" kind="no-match" title="No mesh-ready node matches that query">
+        <template #icon><Spline :size="26" aria-hidden="true" /></template>
+        <p>Nothing in {{ readyNodes.length }} mesh-ready {{ readyNodes.length === 1 ? 'node' : 'nodes' }} matches <span class="pc-mono">{{ meshQuery.active.value.source.trim() }}</span>.</p>
+        <template #actions><PcButton @click="meshText = ''">Clear the query</PcButton></template>
+      </PcEmptyState>
       <PcEmptyState v-else title="No node is mesh-ready">
         <template #icon><Spline :size="26" aria-hidden="true" /></template>
         <p>A node becomes mesh-ready when the control plane holds both a WireGuard address and the public key its agent reported. The Overview says what stops it and the step that changes it.</p>
