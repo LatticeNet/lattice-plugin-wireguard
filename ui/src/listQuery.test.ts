@@ -60,6 +60,7 @@ describe("the Fleet query's own fields", () => {
     expect(run(FLEET_SCHEMA, "address:=10.66.0.3/32")).toEqual(["lax-1"]);
     expect(run(FLEET_SCHEMA, "address:203.0.113")).toEqual([]);
     expect(run(FLEET_SCHEMA, "ip:203.0.113.3")).toEqual(["lax-1"]);
+    expect(run(FLEET_SCHEMA, "addr:10.66.0.2")).toEqual(["hkg-1"]);
   });
 
   it("orders addresses numerically, and rows without one last either way", () => {
@@ -159,12 +160,15 @@ describe("querySortMark", () => {
 
   it("marks the column the query's first sort key stands for", () => {
     expect(querySortMark(sortsOf("sort:name"))).toEqual({ key: "node", direction: "asc" });
-    expect(querySortMark(sortsOf("sort:-status,name"))).toEqual({ key: "status", direction: "desc" });
-    expect(querySortMark(sortsOf("sort:config"))).toEqual({ key: "configuration", direction: "asc" });
+    expect(querySortMark(sortsOf("sort:-address,name"))).toEqual({ key: "address", direction: "desc" });
   });
 
-  it("marks none when the key has no column or nothing sorts", () => {
+  it("marks none when the key has no column, orders unlike its column, or nothing sorts", () => {
     expect(querySortMark(sortsOf("sort:port"))).toBeUndefined();
+    expect(querySortMark(sortsOf("sort:config"))).toBeUndefined();
+    // Worst first in the query, online first under the Agent header.
+    expect(run(FLEET_SCHEMA, "sort:status")).toEqual(["tyo-1", "hkg-2", "sjc-1", "lax-2", "hkg-1", "lax-1"]);
+    expect(querySortMark(sortsOf("sort:status"))).toBeUndefined();
     expect(querySortMark(sortsOf("lacks:key"))).toBeUndefined();
   });
 });

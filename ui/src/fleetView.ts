@@ -1,3 +1,6 @@
+import { nodeStatusOf } from "@latticenet/plugin-bridge/query";
+
+import { nodeFacts } from "./listQuery";
 import type { AgentCounts } from "./readiness";
 import type { MeshReadiness, ReadinessGap, WireGuardNode } from "./wireguardModel";
 
@@ -87,12 +90,22 @@ export function displayName(node: WireGuardNode): string {
   return node.name || node.node_id;
 }
 
-export type AgentState = "online" | "offline" | "disabled";
+export type AgentState = "online" | "offline" | "disabled" | "never reported";
 
-/** The word beside the dot. Colour is never the only carrier (design 4.7). */
+/**
+ * The word beside the dot. Colour is never the only carrier (design 4.7).
+ * The console's rule (nodeStatusOf), so the column and `status:` in the query
+ * agree: a node whose last report is the zero time the server sends for one
+ * that never reported is "never reported", not offline.
+ */
 export function agentState(node: WireGuardNode): AgentState {
-  if (node.disabled) return "disabled";
-  return node.online ? "online" : "offline";
+  switch (nodeStatusOf(nodeFacts(node))) {
+    case "disabled": return "disabled";
+    case "online":
+    case "degraded": return "online";
+    case "never_reported": return "never reported";
+    default: return "offline";
+  }
 }
 
 /** The dot's tone. Offline is the console's offline red, not a warning amber. */
@@ -118,7 +131,7 @@ export function fleetNotice(state: { bootError: string; error: string; loaded: n
 
 /** "3m ago" beside the agent's state, or "never seen"; the absolute time goes in the cell's title. */
 export function agentAge(node: WireGuardNode, now: number): string {
-  const age = ageLabel(node.last_seen, now);
+  const age = agentState(node) === "never reported" ? "" : ageLabel(node.last_seen, now);
   return age ? `${age} ago` : "never seen";
 }
 

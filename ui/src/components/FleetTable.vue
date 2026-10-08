@@ -69,6 +69,8 @@ function lastSeen(value?: string): string {
   if (!value) return "not reported";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "not reported";
+  // The server sends the zero time for a node that never reported.
+  if (date.getUTCFullYear() < 2000) return "never";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 

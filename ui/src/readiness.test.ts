@@ -62,8 +62,9 @@ describe("the readiness bar", () => {
 
 describe("agents", () => {
   it("counts online, offline and disabled apart from readiness", () => {
-    expect(agentCounts(production)).toEqual({ total: 34, online: 32, offline: 2, disabled: 0 });
-    expect(agentCounts([node("a", { disabled: true }), node("b", { online: false })])).toEqual({ total: 2, online: 0, offline: 1, disabled: 1 });
+    expect(agentCounts(production)).toEqual({ total: 34, online: 32, offline: 2, disabled: 0, never: 0 });
+    expect(agentCounts([node("a", { disabled: true }), node("b", { online: false })])).toEqual({ total: 2, online: 0, offline: 1, disabled: 1, never: 0 });
+    expect(agentCounts([node("c", { online: false, last_seen: "0001-01-01T00:00:00Z" })])).toEqual({ total: 1, online: 0, offline: 0, disabled: 0, never: 1 });
   });
 });
 

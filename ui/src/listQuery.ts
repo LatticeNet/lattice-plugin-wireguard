@@ -60,12 +60,12 @@ const present = (value: string | undefined): string | undefined => (value?.trim(
 
 /*
  * `address` is the WireGuard address, as the Address column and the panel
- * name it. The shared `ip` field also answers to `address`; listed first,
- * this one wins the name and `ip` keeps the public address.
+ * name it. The shared `ip` field also answers to `address` and `addr`;
+ * listed first, this one wins both names and `ip` keeps the public address.
  */
 const address: QueryField<WireGuardNode> = {
   key: "address",
-  aliases: ["allowedips", "wg_ip"],
+  aliases: ["addr", "allowedips", "wg_ip"],
   type: "list",
   hint: "WireGuard address as reported, and the host route peers pin it to",
   get: (node) => (present(node.address) ? [node.address!, hostRoute(node.address)] : undefined),
@@ -97,7 +97,10 @@ const publicKey: QueryField<WireGuardNode> = {
   sort: false,
 };
 
-const nodeFields = nodeQueryFields<WireGuardNode>(nodeFacts, { only: NODE_FIELDS });
+/* The payload carries the public IPv4 only, so `ip` says so rather than promising internal addresses. */
+const nodeFields = nodeQueryFields<WireGuardNode>(nodeFacts, { only: NODE_FIELDS }).map((field) =>
+  field.key === "ip" ? { ...field, hint: "Public IP" } : field,
+);
 
 /** The words a bare search reads: what the old search box covered, the full key included. */
 function text(node: WireGuardNode): (string | undefined)[] {
@@ -163,13 +166,16 @@ export const MESH_EXAMPLES: readonly QueryExample[] = [
   { query: "sort:address", note: "The mesh in AllowedIPs order" },
 ];
 
-/** The Fleet columns a query's sort can stand for, by the query field's key. */
+/*
+ * The Fleet columns a query's sort can stand for, by the query field's key.
+ * Not `status`: the query orders it worst first (never reported, offline,
+ * disabled, online), the Agent header online first, so one mark cannot say
+ * both. Not `config`: no column shows it.
+ */
 const COLUMN_OF: Readonly<Record<string, NodeSortKey>> = {
   name: "node",
   address: "address",
   endpoint: "endpoint",
-  config: "configuration",
-  status: "status",
 };
 
 /**

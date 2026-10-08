@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ageLabel, agentState, agentTone, fleetNotice, formatClock, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
+import { ageLabel, agentAge, agentState, agentTone, fleetNotice, formatClock, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
@@ -126,5 +126,14 @@ describe("the agent state word", () => {
     expect(agentState(node({ ...ready, online: true }))).toBe("online");
     expect(agentState(node({ ...ready, online: false }))).toBe("offline");
     expect(agentState(node({ ...ready, online: true, disabled: true }))).toBe("disabled");
+  });
+
+  it("says never reported for the zero time the server sends, as the query's status does", () => {
+    const never = node({ online: false, last_seen: "0001-01-01T00:00:00Z" });
+    expect(agentState(never)).toBe("never reported");
+    expect(agentTone(never)).toBe("neutral");
+    expect(agentAge(never, Date.parse("2026-10-08T12:00:00Z"))).toBe("never seen");
+    // No last_seen at all says nothing about never: offline, as the console rebuilds it.
+    expect(agentState(node({ online: false }))).toBe("offline");
   });
 });
