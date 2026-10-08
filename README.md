@@ -108,11 +108,12 @@ link did.
 
 The page is built on the shared plugin chassis, `@latticenet/plugin-bridge/chassis`
 (see `docs/design-plugin-chassis.md` in the `lattice` repo). `ui/package.json`
-pins `@latticenet/plugin-bridge` `0.2.0-alpha.1` from the package registry
-(GitHub Packages, `ui/.npmrc`): its client passes `pageState` and sends the page
-state back, and its chassis carries the layer row, the non-modal side panel and
-the table fixes this page used to patch. That version resolves once the bridge
-release is published; until then `npm ci` cannot install it.
+pins `@latticenet/plugin-bridge` `0.2.0-alpha.3` from the package registry
+(GitHub Packages, `ui/.npmrc`), and the lock holds it to that release's tarball
+URL and sha512 integrity (`ui/src/bridgeLock.test.ts` fails otherwise). Its
+client passes `pageState` and sends the page state back, its chassis carries the
+layer row, the non-modal side panel and the table fixes this page used to patch.
+`npm ci` needs a `GITHUB_TOKEN` that can read the LatticeNet packages.
 
 Build and sign with Go `1.26.4`, Node `22`, the deterministic plugin packer, and
 the trusted LatticeNet Ed25519 publisher seed. Never commit the seed.
