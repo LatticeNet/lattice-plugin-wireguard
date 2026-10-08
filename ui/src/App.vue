@@ -62,7 +62,7 @@ import {
   type StateSender,
 } from "./pageState";
 import { agentCounts, gapGroups, meshAttention, missingColumnsNote, readinessBar, reportedColumns, type AttentionActionKind } from "./readiness";
-import { PANEL_TITLE, decodeWgState, encodeWgState, nodePanelState, type WgPageState, type WgView } from "./viewState";
+import { PANEL_TITLE, decodeWgState, encodeWgState, listPanelStale, nodePanelState, type WgPageState, type WgView } from "./viewState";
 import {
   PRIVATE_KEY_PLACEHOLDER,
   hostRoute,
@@ -198,6 +198,7 @@ const sortedNodes = computed(() => sortNodes(nodes.value, sortKey.value, sortDir
  */
 const fleetQuery = useListQuery(sortedNodes, FLEET_SCHEMA, fleetText);
 const visibleNodes = fleetQuery.rows;
+const fleetStale = computed(() => listPanelStale({ invalid: fleetQuery.invalid.value, rows: visibleNodes.value.length }));
 const columns = computed(() => reportedColumns(visibleNodes.value));
 const columnsNote = computed(() => missingColumnsNote(reportedColumns(nodes.value)));
 const page = ref(1);
@@ -227,6 +228,7 @@ function toggleSort(key: NodeSortKey): void {
 // ── Mesh ────────────────────────────────────────────────────────────────────
 
 const meshQuery = useListQuery(readyNodes, MESH_SCHEMA, meshText);
+const meshStale = computed(() => listPanelStale({ invalid: meshQuery.invalid.value, rows: meshQuery.rows.value.length }));
 const meshSearching = computed(() => meshText.value.trim() !== "");
 
 // ── the node panel ──────────────────────────────────────────────────────────
@@ -483,14 +485,16 @@ onBeforeUnmount(() => {
          columns are missing, because a table with two columns otherwise
          reads as a page that failed to load. -->
     <!-- While the query is invalid the rows answer the last valid one, so
-         the panel dims and takes no input (data-stale, inert). -->
+         the panel dims and takes no input (data-stale, inert); over the
+         no-match state it stays live, so Clear the query works
+         (listPanelStale). -->
     <PcPanel
       v-else-if="view === 'fleet'"
       id="pc-panel-fleet"
       role="tabpanel"
       aria-labelledby="pc-tab-fleet"
-      :data-stale="fleetQuery.invalid.value ? 'true' : undefined"
-      :inert="fleetQuery.invalid.value || undefined"
+      :data-stale="fleetStale ? 'true' : undefined"
+      :inert="fleetStale || undefined"
     >
       <template v-if="visibleNodes.length">
         <p v-if="columnsNote" class="wg-layer-note">{{ columnsNote }}</p>
@@ -532,8 +536,8 @@ onBeforeUnmount(() => {
       id="pc-panel-mesh"
       role="tabpanel"
       aria-labelledby="pc-tab-mesh"
-      :data-stale="meshQuery.invalid.value ? 'true' : undefined"
-      :inert="meshQuery.invalid.value || undefined"
+      :data-stale="meshStale ? 'true' : undefined"
+      :inert="meshStale || undefined"
     >
       <p class="wg-layer-note">
         <template v-if="readyNodes.length">{{ readyNodes.length }} mesh-ready, {{ peerCount }} {{ peerCount === 1 ? 'peer' : 'peers' }} in each config. </template>Every mesh-ready node gets a host route to each of the others. Open a node for its peers and its plan.
