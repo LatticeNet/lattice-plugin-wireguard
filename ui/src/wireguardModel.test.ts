@@ -128,6 +128,15 @@ describe("sortNodes", () => {
 
     const states = [node({ name: "off" }), node({ name: "dis", online: true, disabled: true }), node({ name: "on", online: true })];
     expect(sortNodes(states, "status", "asc").map((value) => value.name)).toEqual(["on", "off", "dis"]);
+
+    // By the server's status when it sends one: the stale beat sorts with the offline nodes.
+    const served = [
+      node({ name: "stale", online: true, status: "offline" }),
+      node({ name: "fresh", online: false, status: "never_reported" }),
+      node({ name: "on", online: true, status: "online" }),
+      node({ name: "dis", online: false, status: "disabled" }),
+    ];
+    expect(sortNodes(served, "status", "asc").map((value) => value.name)).toEqual(["on", "fresh", "stale", "dis"]);
   });
 
   it("leaves the input untouched", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ageLabel, agentAge, agentState, agentTone, fleetNotice, formatClock, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
+import { ageLabel, agentAge, agentState, agentTone, fleetNotice, formatClock, lastSeenLabel, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
@@ -133,7 +133,36 @@ describe("the agent state word", () => {
     expect(agentState(never)).toBe("never reported");
     expect(agentTone(never)).toBe("neutral");
     expect(agentAge(never, Date.parse("2026-10-08T12:00:00Z"))).toBe("never seen");
-    // No last_seen at all says nothing about never: offline, as the console rebuilds it.
+    // No last_seen and no status says nothing about never: offline, as the console rebuilds it.
     expect(agentState(node({ online: false }))).toBe("offline");
+  });
+
+  it("takes the server's status over the flag and the time, which it leaves off for a node that never reported", () => {
+    const never = node({ status: "never_reported", online: false });
+    expect(agentState(never)).toBe("never reported");
+    expect(agentTone(never)).toBe("neutral");
+    expect(agentAge(never, Date.parse("2026-10-08T12:00:00Z"))).toBe("never seen");
+    // The beat went stale before the liveness sweep flipped the flag: the status already says offline.
+    expect(agentState(node({ status: "offline", online: true, last_seen: "2026-10-08T11:58:00Z" }))).toBe("offline");
+    expect(agentState(node({ status: "disabled", online: true }))).toBe("disabled");
+    expect(agentState(node({ status: "online", online: true, last_seen: "2026-10-08T11:59:50Z" }))).toBe("online");
+    // A word the rule does not know is ignored, and the row's own facts decide.
+    expect(agentState(node({ status: "reachable", online: false, last_seen: "0001-01-01T00:00:00Z" }))).toBe("never reported");
+  });
+});
+
+describe("the last-seen label", () => {
+  it("says never where the server left the time off or sent the zero time, and prints a real one", () => {
+    expect(lastSeenLabel(node({ status: "never_reported", online: false }))).toBe("never");
+    // Disabled outranks never reported, and the server still leaves the zero time off.
+    expect(lastSeenLabel(node({ status: "disabled", online: false, disabled: true }))).toBe("never");
+    expect(lastSeenLabel(node({ online: false, last_seen: "0001-01-01T00:00:00Z" }))).toBe("never");
+    expect(lastSeenLabel(node({ online: false, disabled: true, last_seen: "0001-01-01T00:00:00Z" }))).toBe("never");
+    // No status and no time: the state reads offline, so the label does not claim never.
+    expect(lastSeenLabel(node({ online: false }))).toBe("not reported");
+    expect(lastSeenLabel(node({ last_seen: "not a time" }))).toBe("not reported");
+    const printed = lastSeenLabel(node({ status: "online", last_seen: "2026-10-08T11:58:00Z" }), "en-US");
+    expect(printed).toMatch(/2026/);
+    expect(printed).not.toMatch(/never|not reported/);
   });
 });

@@ -66,6 +66,19 @@ describe("agents", () => {
     expect(agentCounts([node("a", { disabled: true }), node("b", { online: false })])).toEqual({ total: 2, online: 0, offline: 1, disabled: 1, never: 0 });
     expect(agentCounts([node("c", { online: false, last_seen: "0001-01-01T00:00:00Z" })])).toEqual({ total: 1, online: 0, offline: 0, disabled: 0, never: 1 });
   });
+
+  it("counts by the server's status, so a stale beat the flag still calls online counts offline everywhere", () => {
+    const nodes = [
+      ready("on", { status: "online" }),
+      ready("stale", { status: "offline", online: true }),
+      node("fresh", { status: "never_reported", online: false }),
+    ];
+    expect(agentCounts(nodes)).toEqual({ total: 3, online: 1, offline: 1, disabled: 0, never: 1 });
+    expect(summarizeReadiness(nodes).onlineReady).toBe(1);
+    expect(gapGroups(nodes).map((group) => [group.gap, group.online])).toEqual([["needs_both", 0], ["ready", 1]]);
+    const items = meshAttention([...nodes, ready("on2", { status: "online" })], summarizeReadiness([...nodes, ready("on2", { status: "online" })]));
+    expect(items.find((item) => item.key === "ready-offline")?.proof).toBe("stale");
+  });
 });
 
 describe("the fleet grouped by what each node lacks", () => {

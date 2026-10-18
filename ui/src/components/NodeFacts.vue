@@ -13,7 +13,7 @@ import { FileCode2 } from "@lucide/vue";
 
 import { PcButton, PcStatePill } from "@latticenet/plugin-bridge/chassis";
 
-import { agentState, displayName } from "../fleetView";
+import { agentState, displayName, lastSeenLabel } from "../fleetView";
 import { PLAN_UNKNOWNS, hostRoute, meshPeersFor, readinessGap, readinessGapLabel, redactedKey, type WireGuardNode } from "../wireguardModel";
 
 const props = defineProps<{
@@ -31,15 +31,6 @@ const planReason = computed(() => {
   if (gap.value !== "ready") return `${readinessGapLabel(gap.value)}, so there is nothing to plan yet. The agent reports what LATTICE_WG_IP and LATTICE_WG_PUBKEY hold.`;
   return "";
 });
-
-function lastSeen(value?: string): string {
-  if (!value) return "not reported";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "not reported";
-  // The server sends the zero time for a node that never reported.
-  if (date.getUTCFullYear() < 2000) return "never";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
 </script>
 
 <template>
@@ -71,7 +62,7 @@ function lastSeen(value?: string): string {
         <dt>Listen port</dt><dd>{{ node.listen_port || '51820 (default)' }}</dd>
         <dt>Public key</dt><dd :title="redactedKey(node.public_key)">{{ redactedKey(node.public_key) }}</dd>
         <dt>Endpoint</dt><dd :title="node.endpoint || 'not reported'">{{ node.endpoint || 'not reported: dial-out only' }}</dd>
-        <dt>Agent</dt><dd>{{ agentState(node) }}, last seen {{ lastSeen(node.last_seen) }}</dd>
+        <dt>Agent</dt><dd>{{ agentState(node) }}, last seen {{ lastSeenLabel(node) }}</dd>
         <dt>Key source</dt><dd>node-local file</dd>
       </dl>
     </section>
