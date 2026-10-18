@@ -1,5 +1,8 @@
+import { nodeIsReporting, nodeStatusOf, type NodeStatus, type PluginNodeFacts } from "@latticenet/plugin-bridge/query";
+
 export const PRIVATE_KEY_PLACEHOLDER = "__LATTICE_WG_PRIVATE_KEY__";
 
+/** One row of `overview` (lattice-server wireGuardNetworkView). */
 export interface WireGuardNode {
   node_id: string;
   name: string;
@@ -8,10 +11,50 @@ export interface WireGuardNode {
   endpoint?: string;
   listen_port?: number;
   public_ip?: string;
+  /**
+   * The agent's liveness in the node status words: disabled, never_reported,
+   * offline or online, by the server's node status rule; never degraded.
+   * Servers up to alpha-0.2.2a138 do not send it.
+   */
+  status?: string;
+  /** The stored flag, which lags the status by up to one liveness sweep. Read agentStatus instead. */
   online: boolean;
   disabled?: boolean;
+  /**
+   * The last report. Left off for a node that never reported; servers up to
+   * alpha-0.2.2a138 sent the Go zero time instead.
+   */
   last_seen?: string;
   configuration: "ready" | "partial" | "missing";
+}
+
+/** The node facts the console's node rule and query fields read, under the control plane's names. */
+export function nodeFacts(node: WireGuardNode): PluginNodeFacts {
+  return {
+    id: node.node_id,
+    name: node.name,
+    status: node.status,
+    online: node.online,
+    disabled: node.disabled,
+    last_seen: node.last_seen,
+    public_ip: node.public_ip,
+  };
+}
+
+/**
+ * The agent's status, by the console's rule (nodeStatusOf), the one word the
+ * column, the counts, the sort and the query all read. The server's word wins
+ * when it sent one. A server that sends none (alpha-0.2.2a138 and older) has
+ * it rebuilt from disabled, online and last_seen, where the zero time it sends
+ * for a node that never reported reads never_reported.
+ */
+export function agentStatus(node: WireGuardNode): NodeStatus {
+  return nodeStatusOf(nodeFacts(node));
+}
+
+/** The agent is in contact: online (or degraded, which this view never sends). Never true for a disabled node. */
+export function agentReporting(node: WireGuardNode): boolean {
+  return nodeIsReporting(nodeFacts(node));
 }
 
 /**
@@ -158,7 +201,7 @@ export function summarizeReadiness(nodes: readonly WireGuardNode[]): MeshReadine
       case "needs_address": summary.needsAddress += 1; break;
       case "needs_both": summary.needsBoth += 1; break;
     }
-    if (readinessGap(node) === "ready" && node.online && !node.disabled) summary.onlineReady += 1;
+    if (readinessGap(node) === "ready" && agentReporting(node)) summary.onlineReady += 1;
     if (node.endpoint?.trim()) summary.endpoints += 1;
     if (node.disabled) summary.disabled += 1;
   }
@@ -178,9 +221,9 @@ function nodeSortValue(node: WireGuardNode, key: NodeSortKey): string | number {
     case "address": return hostRoute(node.address).toLowerCase();
     case "endpoint": return (node.endpoint || "").toLowerCase();
     case "configuration": return CONFIG_ORDER[node.configuration] ?? 3;
-    // Disabled sorts after offline: an offline node may come back on its own,
-    // a disabled one will not.
-    case "status": return node.disabled ? 2 : node.online ? 0 : 1;
+    // Disabled sorts after offline and never reported: those may come back on
+    // their own, a disabled one will not.
+    case "status": return agentStatus(node) === "disabled" ? 2 : agentReporting(node) ? 0 : 1;
   }
 }
 

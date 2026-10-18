@@ -13,6 +13,14 @@
 
 export type Scenario = "production" | "rich" | "empty" | "failing";
 
+/**
+ * The server the answers are shaped like. "status" is lattice-server from the
+ * release after alpha-0.2.2a138: each row carries the agent's status word and
+ * no last_seen for a node that never reported. "a138" is that server and
+ * older: no status, and the Go zero time in last_seen.
+ */
+export type Wire = "status" | "a138";
+
 const NAMES = [
   "[Metix]-DMIT-1", "[Metix]-DMIT-2", "[Metix]-DMIT-3", "[Metix]-DMIT-4", "[Metix]-RackNerd-1",
   "[Metix]-RackNerd-2", "[Metix]-Vultr-TYO", "[Metix]-Vultr-SGP", "[Metix]-AWS-HKG", "[Metix]-AWS-FRA",
@@ -43,13 +51,22 @@ interface FixtureNode {
   endpoint?: string;
   listen_port?: number;
   public_ip?: string;
+  status?: string;
   online: boolean;
   disabled?: boolean;
   last_seen?: string;
   configuration: "ready" | "partial" | "missing";
 }
 
-function build(scenario: Scenario): FixtureNode[] {
+/** The server's rule (lattice-server deriveNodeStatus, without degraded): disabled, then never, then offline. */
+function statusOf(node: { disabled: boolean; online: boolean; lastSeen?: number }, now: number): string {
+  if (node.disabled) return "disabled";
+  if (node.lastSeen === undefined) return "never_reported";
+  if (!node.online || now - node.lastSeen > 90_000) return "offline";
+  return "online";
+}
+
+function build(scenario: Scenario, wire: Wire): FixtureNode[] {
   if (scenario === "empty") return [];
   return NAMES.map((name, index) => {
     // production: nothing reported, which is the live fleet.
@@ -58,7 +75,18 @@ function build(scenario: Scenario): FixtureNode[] {
     const hasKey = scenario === "rich" && index % 4 !== 3;
     const configuration = hasAddress && hasKey ? "ready" : hasAddress || hasKey ? "partial" : "missing";
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const online = scenario === "rich" ? index % 6 !== 1 : !OFFLINE.has(name);
+    // rich also holds an agent that never reported, and one whose beat went
+    // stale before the liveness sweep flipped its flag: the server's status
+    // already calls it offline.
+    const never = scenario === "rich" && index % 13 === 7;
+    const stale = scenario === "rich" && index === 2;
+    const online = never ? false : scenario === "rich" ? index % 6 !== 1 : !OFFLINE.has(name);
+    const disabled = scenario === "rich" && index % 11 === 4;
+    const now = Date.now();
+    // Invented times, counted back from now so the relative ages read the
+    // way production's do: an online agent reported seconds ago, inside the
+    // server's 90 s offline threshold, an offline one days ago.
+    const lastSeen = never ? undefined : now - (stale ? 150 : online ? 5 + index * 2 : 6 * 86_400 + index * 3_600) * 1000;
     return {
       node_id: `node_${slug}`,
       name,
@@ -67,19 +95,17 @@ function build(scenario: Scenario): FixtureNode[] {
       endpoint: scenario === "rich" && index % 5 === 0 ? `${slug}.example.invalid:51820` : undefined,
       listen_port: scenario === "rich" && index % 5 === 0 ? 51820 : undefined,
       public_ip: `203.0.113.${index + 1}`,
+      ...(wire === "status" ? { status: statusOf({ disabled, online, lastSeen }, now) } : {}),
       online,
-      disabled: scenario === "rich" && index % 11 === 4,
-      // Invented times, counted back from now so the relative ages read the
-      // way production's do: an online agent reported seconds ago, an
-      // offline one days ago.
-      last_seen: new Date(Date.now() - (online ? 15 + index * 7 : 6 * 86_400 + index * 3_600) * 1000).toISOString(),
+      disabled,
+      last_seen: lastSeen !== undefined ? new Date(lastSeen).toISOString() : wire === "a138" ? "0001-01-01T00:00:00Z" : undefined,
       configuration,
     };
   });
 }
 
-export function handlers(scenario: Scenario): Record<string, (payload: any) => unknown> {
-  const nodes = build(scenario);
+export function handlers(scenario: Scenario, wire: Wire = "status"): Record<string, (payload: any) => unknown> {
+  const nodes = build(scenario, wire);
   return {
     "networks/overview": () => ({ nodes }),
     "networks/plan": ({ node_id, listen_port }: { node_id: string; listen_port: number }) => {

@@ -4,10 +4,10 @@
  * rows carry.
  *
  * A row is what `overview` returns for one node (lattice-server
- * wireGuardNetworkView): the node's id, name, public IP, agent liveness and
- * last report, which the shared node fields read under the console's names,
- * and the WireGuard facts the agent reported, which this page declares
- * itself. The payload has no role, tags, groups, agent version or geo, so
+ * wireGuardNetworkView): the node's id, name, public IP, agent status,
+ * liveness and last report, which the shared node fields read under the
+ * console's names (nodeFacts), and the WireGuard facts the agent reported,
+ * which this page declares itself. The payload has no role, tags, groups, agent version or geo, so
  * those node fields stay out of the menu, and no handshake or transfer
  * figure, because the plugin does not read the interface.
  *
@@ -17,32 +17,20 @@
 import {
   nodeQueryFields,
   type NodeFieldKey,
-  type PluginNodeFacts,
   type QueryField,
   type QuerySchema,
   type QuerySort,
 } from "@latticenet/plugin-bridge/query";
 import type { QueryExample } from "@latticenet/plugin-bridge/chassis";
 
-import { hostRoute, readinessGap, type NodeSortKey, type SortDirection, type WireGuardNode } from "./wireguardModel";
-
-/** The node facts the shared fields read, under the control plane's names. */
-export function nodeFacts(node: WireGuardNode): PluginNodeFacts {
-  return {
-    id: node.node_id,
-    name: node.name,
-    online: node.online,
-    disabled: node.disabled,
-    last_seen: node.last_seen,
-    public_ip: node.public_ip,
-  };
-}
+import { hostRoute, nodeFacts, readinessGap, type NodeSortKey, type SortDirection, type WireGuardNode } from "./wireguardModel";
 
 /*
  * The shared fields this payload can answer. `degraded` and `reporting` are
- * left out: with no server status word the status is rebuilt from online,
- * disabled and last_seen, which never yields degraded. `never` stays: the
- * server sends the zero time for a node that never reported.
+ * left out: the server's status word for this view is never degraded, and
+ * without one the status is rebuilt from online, disabled and last_seen,
+ * which never yields degraded either. `never` stays: the server says
+ * never_reported, and an older server sends the zero time for that node.
  */
 const NODE_FIELDS: readonly NodeFieldKey[] = ["name", "id", "ip", "status", "online", "offline", "disabled", "never", "last_seen"];
 

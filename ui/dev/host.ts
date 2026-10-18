@@ -20,7 +20,9 @@
  * `lattice.plugin.state` replaces those keys with a history replace, the way
  * the console keeps them in its address (design 22). `?view=fleet&open=<id>`
  * opens a node; a reload lands where the plugin was. `oldhost=1` plays a
- * console from before the contract. A `lattice:navigate` request is shown in
+ * console from before the contract. `wire=a138` answers as alpha-0.2.2a138
+ * and older do: no status word, and the zero time for a node that never
+ * reported. A `lattice:navigate` request is shown in
  * the bar rather than followed.
  *
  * "refuse calls" turns every answer into a host error without reloading the
@@ -30,7 +32,7 @@
  */
 
 import { filterPageState, validPageState, type PageState } from "../src/pageState";
-import { handlers, type Scenario } from "./fixtures";
+import { handlers, type Scenario, type Wire } from "./fixtures";
 
 const ROUTES = ["networks"] as const;
 type Route = (typeof ROUTES)[number];
@@ -64,12 +66,13 @@ const LIGHT: Record<string, string> = {
 };
 
 /* The harness's own keys. Everything else in the address is page state. */
-const HARNESS_KEYS = new Set(["route", "scenario", "theme", "width", "frame", "refuse", "readonly", "plugin", "oldhost"]);
+const HARNESS_KEYS = new Set(["route", "scenario", "theme", "width", "frame", "refuse", "readonly", "plugin", "oldhost", "wire"]);
 
 const params = new URLSearchParams(location.search);
 let frameEpoch = 0;
 let route = (params.get("route") ?? "networks") as Route;
 let scenario = (params.get("scenario") ?? "production") as Scenario;
+let wire: Wire = params.get("wire") === "a138" ? "a138" : "status";
 let dark = params.get("theme") !== "light";
 let width = params.get("width") ?? "1440";
 let refuse = params.get("refuse") === "1";
@@ -97,6 +100,7 @@ shell.innerHTML = `
     <strong>wireguard dev harness</strong>
     <label hidden>route <select id="route">${ROUTES.map((value) => `<option${value === route ? " selected" : ""}>${value}</option>`).join("")}</select></label>
     <label>data <select id="scenario">${["production", "rich", "empty", "failing"].map((value) => `<option${value === scenario ? " selected" : ""}>${value}</option>`).join("")}</select></label>
+    <label>server <select id="wire">${["status", "a138"].map((value) => `<option${value === wire ? " selected" : ""}>${value}</option>`).join("")}</select></label>
     <label>width <select id="width">${["1440", "2423", "375"].map((value) => `<option${value === width ? " selected" : ""}>${value}</option>`).join("")}</select></label>
     <label><input id="refuse" type="checkbox"${refuse ? " checked" : ""}> refuse calls</label>
     <button id="theme" type="button">${dark ? "light" : "dark"}</button>
@@ -129,6 +133,7 @@ function syncQuery(): void {
   if (readOnly) query.set("readonly", "1");
   if (pluginQuery) query.set("plugin", pluginQuery);
   if (oldHost) query.set("oldhost", "1");
+  if (wire !== "status") query.set("wire", wire);
   for (const [key, value] of Object.entries(pageState)) query.set(key, value);
   history.replaceState(null, "", `?${query}`);
 }
@@ -198,7 +203,7 @@ window.addEventListener("message", (event) => {
       return;
     }
     case "lattice.plugin.call": {
-      const table = handlers(scenario);
+      const table = handlers(scenario, wire);
       const key = `${String(data.service).split("/").pop()}/${data.method}`;
       const handler = table[key];
       // Decided when the call arrives: a call made while refusing is refused
@@ -230,6 +235,10 @@ document.getElementById("route")!.addEventListener("change", (event) => {
 });
 document.getElementById("scenario")!.addEventListener("change", (event) => {
   scenario = (event.target as HTMLSelectElement).value as Scenario;
+  reload();
+});
+document.getElementById("wire")!.addEventListener("change", (event) => {
+  wire = (event.target as HTMLSelectElement).value as Wire;
   reload();
 });
 document.getElementById("width")!.addEventListener("change", (event) => {

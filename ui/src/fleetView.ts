@@ -1,8 +1,5 @@
-import { nodeStatusOf } from "@latticenet/plugin-bridge/query";
-
-import { nodeFacts } from "./listQuery";
 import type { AgentCounts } from "./readiness";
-import type { MeshReadiness, ReadinessGap, WireGuardNode } from "./wireguardModel";
+import { agentStatus, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
 
 /**
  * What the Fleet layer does with the node list before it is drawn: the page
@@ -94,12 +91,12 @@ export type AgentState = "online" | "offline" | "disabled" | "never reported";
 
 /**
  * The word beside the dot. Colour is never the only carrier (design 4.7).
- * The console's rule (nodeStatusOf), so the column and `status:` in the query
- * agree: a node whose last report is the zero time the server sends for one
- * that never reported is "never reported", not offline.
+ * The console's rule (agentStatus), so the column and `status:` in the query
+ * agree: a node the server calls never_reported, or whose last report is the
+ * zero time an older server sends for one, is "never reported", not offline.
  */
 export function agentState(node: WireGuardNode): AgentState {
-  switch (nodeStatusOf(nodeFacts(node))) {
+  switch (agentStatus(node)) {
     case "disabled": return "disabled";
     case "online":
     case "degraded": return "online";
@@ -127,6 +124,19 @@ export function fleetNotice(state: { bootError: string; error: string; loaded: n
   if (!state.error) return undefined;
   if (state.loaded > 0) return { tone: "warning", title: "The fleet below is the last good read, not the current one", dismissible: true };
   return { tone: "danger", title: "The fleet could not be read", dismissible: false };
+}
+
+/**
+ * The absolute time of the last report, for the Agent cell's title and the
+ * panel. A view time is left off only when it is the zero time, so an absent
+ * last_seen and the zero time an older server sends both say never.
+ */
+export function lastSeenLabel(value: string | undefined, locale?: string): string {
+  if (!value) return "never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "not reported";
+  if (date.getUTCFullYear() < 2000) return "never";
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 /** "3m ago" beside the agent's state, or "never seen"; the absolute time goes in the cell's title. */

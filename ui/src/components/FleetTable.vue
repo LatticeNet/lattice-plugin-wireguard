@@ -24,7 +24,7 @@ import { computed } from "vue";
 
 import { PcActionsCell, PcGroupRow, PcRow, PcStateDot, PcTable, PcTd, PcTh, type SortState } from "@latticenet/plugin-bridge/chassis";
 
-import { agentAge, agentState, agentTone, displayName, gapConsequence, gapCountLine } from "../fleetView";
+import { agentAge, agentState, agentTone, displayName, gapConsequence, gapCountLine, lastSeenLabel } from "../fleetView";
 import { idAddsInformation } from "../identity";
 import type { GapGroup, ReportedColumns } from "../readiness";
 import type { MenuItem } from "../rowMenu";
@@ -63,15 +63,6 @@ const minWidth = computed(() => (fits.value ? 0 : 360 + (props.columns.address ?
 function sortFor(key: NodeSortKey): SortState {
   if (props.sortKey !== key) return "none";
   return props.sortDirection === "asc" ? "ascending" : "descending";
-}
-
-function lastSeen(value?: string): string {
-  if (!value) return "not reported";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "not reported";
-  // The server sends the zero time for a node that never reported.
-  if (date.getUTCFullYear() < 2000) return "never";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 const PLAN_MENU: MenuItem[] = [{ key: "plan", label: "Plan configuration…" }];
@@ -137,7 +128,7 @@ function openRow(event: MouseEvent, nodeId: string): void {
         <PcTd v-if="columns.endpoint" label="Endpoint" mono :title="node.endpoint || 'No public endpoint reported, so peers cannot dial in to this node'">
           <span :class="node.endpoint ? undefined : 'wg-absent'">{{ node.endpoint || 'dial-out only' }}</span>
         </PcTd>
-        <PcTd label="Agent" stack="state" class="wg-agent-cell" :title="`${agentState(node)}, last seen ${lastSeen(node.last_seen)}`">
+        <PcTd label="Agent" stack="state" class="wg-agent-cell" :title="`${agentState(node)}, last seen ${lastSeenLabel(node.last_seen)}`">
           <span class="wg-agent">
             <PcStateDot :tone="agentTone(node)" :label="agentState(node)" />
             <span class="wg-agent-age">{{ agentAge(node, now) }}</span>

@@ -12,7 +12,7 @@
  * without jsdom.
  */
 import { agentState } from "./fleetView";
-import { readinessGap, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
+import { agentReporting, readinessGap, type MeshReadiness, type ReadinessGap, type WireGuardNode } from "./wireguardModel";
 
 // ── agents ────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export interface AgentCounts {
   online: number;
   offline: number;
   disabled: number;
-  /** Enrolled but never reported: the zero time the server sends. */
+  /** Enrolled but never reported: the server's never_reported, or the zero time an older server sends. */
   never: number;
 }
 
@@ -106,7 +106,7 @@ export function meshAttention(nodes: readonly WireGuardNode[], readiness: MeshRe
     });
   }
 
-  const offline = ready.filter((node) => !node.online || node.disabled);
+  const offline = ready.filter((node) => !agentReporting(node));
   if (offline.length) {
     items.push({
       key: "ready-offline",
@@ -171,7 +171,7 @@ const GAP_LABEL: Record<ReadinessGap, string> = {
 export function gapGroups(nodes: readonly WireGuardNode[]): GapGroup[] {
   return GAP_ORDER.map((gap) => {
     const members = nodes.filter((node) => readinessGap(node) === gap);
-    return { gap, label: GAP_LABEL[gap], nodes: members, online: members.filter((node) => node.online && !node.disabled).length };
+    return { gap, label: GAP_LABEL[gap], nodes: members, online: members.filter(agentReporting).length };
   }).filter((group) => group.nodes.length > 0);
 }
 

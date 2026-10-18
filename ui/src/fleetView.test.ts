@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ageLabel, agentAge, agentState, agentTone, fleetNotice, formatClock, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
+import { ageLabel, agentAge, agentState, agentTone, fleetNotice, formatClock, lastSeenLabel, pageCount, pageOf, pageSlice, proofSegments, proofTitle } from "./fleetView";
 import { agentCounts } from "./readiness";
 import { summarizeReadiness, type WireGuardNode } from "./wireguardModel";
 
@@ -133,7 +133,30 @@ describe("the agent state word", () => {
     expect(agentState(never)).toBe("never reported");
     expect(agentTone(never)).toBe("neutral");
     expect(agentAge(never, Date.parse("2026-10-08T12:00:00Z"))).toBe("never seen");
-    // No last_seen at all says nothing about never: offline, as the console rebuilds it.
+    // No last_seen and no status says nothing about never: offline, as the console rebuilds it.
     expect(agentState(node({ online: false }))).toBe("offline");
+  });
+
+  it("takes the server's status over the flag and the time, which it leaves off for a node that never reported", () => {
+    const never = node({ status: "never_reported", online: false });
+    expect(agentState(never)).toBe("never reported");
+    expect(agentTone(never)).toBe("neutral");
+    expect(agentAge(never, Date.parse("2026-10-08T12:00:00Z"))).toBe("never seen");
+    // The beat went stale before the liveness sweep flipped the flag: the status already says offline.
+    expect(agentState(node({ status: "offline", online: true, last_seen: "2026-10-08T11:58:00Z" }))).toBe("offline");
+    expect(agentState(node({ status: "disabled", online: true }))).toBe("disabled");
+    expect(agentState(node({ status: "online", online: true, last_seen: "2026-10-08T11:59:50Z" }))).toBe("online");
+    // A word the rule does not know is ignored, and the row's own facts decide.
+    expect(agentState(node({ status: "reachable", online: false, last_seen: "0001-01-01T00:00:00Z" }))).toBe("never reported");
+  });
+});
+
+describe("the last-seen label", () => {
+  it("says never for an absent time and for the zero time, and prints a real one", () => {
+    expect(lastSeenLabel(undefined)).toBe("never");
+    expect(lastSeenLabel("")).toBe("never");
+    expect(lastSeenLabel("0001-01-01T00:00:00Z")).toBe("never");
+    expect(lastSeenLabel("not a time")).toBe("not reported");
+    expect(lastSeenLabel("2026-10-08T11:58:00Z", "en-US")).toMatch(/Oct 8, 2026/);
   });
 });

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { applyQuery, compileQuery, describeFields, type QuerySchema } from "@latticenet/plugin-bridge/query";
 
-import { FLEET_EXAMPLES, FLEET_SCHEMA, MESH_EXAMPLES, MESH_SCHEMA, lacking, nodeFacts, querySortMark } from "./listQuery";
-import type { WireGuardNode } from "./wireguardModel";
+import { FLEET_EXAMPLES, FLEET_SCHEMA, MESH_EXAMPLES, MESH_SCHEMA, lacking, querySortMark } from "./listQuery";
+import { nodeFacts, type WireGuardNode } from "./wireguardModel";
 
 const NOW = Date.parse("2026-10-08T12:00:00Z");
 const ago = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
@@ -90,6 +90,18 @@ describe("the shared node fields on WireGuard rows", () => {
     expect(run(FLEET_SCHEMA, "is:disabled")).toEqual(["lax-2"]);
     expect(run(FLEET_SCHEMA, "status:never")).toEqual(["tyo-1"]);
     expect(run(FLEET_SCHEMA, "is:never")).toEqual(["tyo-1"]);
+  });
+
+  it("takes the server's status word, and reads a never-reported node without last_seen as never", () => {
+    const served = [
+      node("fresh", { status: "never_reported", online: false, last_seen: undefined }),
+      node("stale", { status: "offline", online: true, last_seen: ago(120) }),
+      node("up", { status: "online" }),
+    ];
+    expect(run(FLEET_SCHEMA, "is:never", served)).toEqual(["fresh"]);
+    expect(run(FLEET_SCHEMA, "status:offline", served)).toEqual(["stale"]);
+    expect(run(FLEET_SCHEMA, "is:online", served)).toEqual(["up"]);
+    expect(run(FLEET_SCHEMA, "last_seen<1h", served)).toEqual(["stale", "up"]);
   });
 
   it("reads last_seen as an age, and a never-reported node has none", () => {

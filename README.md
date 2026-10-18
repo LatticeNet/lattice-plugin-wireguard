@@ -64,6 +64,24 @@ would be worse there: the frame would keep the height of the first screen
 drawn, and a taller layer or panel would then scroll inside a frame that sits
 inside a scrolling page.
 
+Every agent word on the page (the Agent column, the counts on Overview and on
+each shelf, the attention line about mesh-ready nodes that are not online,
+the Agent sort and `status:` in the query) comes from one rule, the
+console's `nodeStatusOf` over the row (`agentStatus` in
+`ui/src/wireguardModel.ts`). Each `overview` row carries `status`, the
+server's node status words without degraded: `disabled`, `never_reported`,
+`offline` or `online`, by lattice-server's node status precedence and its
+90 s offline threshold, so a node whose beat went stale reads offline before
+the liveness sweep flips `online`. The view never says `degraded`: that
+evidence is about sing-box, the guard reality and the agent loop, not the
+mesh, and the row has no reason line to explain it. A node that never
+reported has no `last_seen`. Servers up to `alpha-0.2.2a138` send no
+`status` and put the Go zero time in `last_seen` instead; against them the
+rule is rebuilt from `disabled`, `online` and `last_seen`, and the zero time
+reads as never reported. The 0.2.0-alpha.6 UI and older read only the zero
+time, so a server that leaves `last_seen` off must not run under them: they
+show every never-reported node as offline.
+
 The page does not render a `wg0.conf`. The control plane renders the one that
 gets applied, and it decides fields this plugin never receives (the interface
 prefix, PersistentKeepalive, MTU and DNS, and peers on nodes outside the
@@ -111,8 +129,10 @@ To drive the UI in a browser, `ui/dev.html` runs the real build inside a real
 iframe and speaks the real bridge protocol at it, with the frame sized to fill
 the console's main region the way the dashboard sizes it. There is no `dev`
 script in `ui/package.json`, so start it with `npx vite --open /dev.html` from
-`ui`. The bar switches data (`production`, `rich`, `empty`, `failing`), width
-(1440, 2423, 375) and theme. Every other key in the harness URL is the
+`ui`. The bar switches data (`production`, `rich`, `empty`, `failing`), the
+server the answers are shaped like (`status`, or `a138` for a server that
+sends no status word and the zero time for a node that never reported),
+width (1440, 2423, 375) and theme. Every other key in the harness URL is the
 plugin's page state, sent in init the way the console sends it:
 `?scenario=rich&view=fleet&open=node_metix-dmit-1` opens that node's panel on
 the Fleet layer, and a reload lands in the same place. `readonly=1` grants the
