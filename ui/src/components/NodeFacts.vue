@@ -62,7 +62,7 @@ const planReason = computed(() => {
         <dt>Listen port</dt><dd>{{ node.listen_port || '51820 (default)' }}</dd>
         <dt>Public key</dt><dd :title="redactedKey(node.public_key)">{{ redactedKey(node.public_key) }}</dd>
         <dt>Endpoint</dt><dd :title="node.endpoint || 'not reported'">{{ node.endpoint || 'not reported: dial-out only' }}</dd>
-        <dt>Agent</dt><dd>{{ agentState(node) }}, last seen {{ lastSeenLabel(node.last_seen) }}</dd>
+        <dt>Agent</dt><dd>{{ agentState(node) }}, last seen {{ lastSeenLabel(node) }}</dd>
         <dt>Key source</dt><dd>node-local file</dd>
       </dl>
     </section>

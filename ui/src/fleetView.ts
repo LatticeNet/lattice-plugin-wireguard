@@ -128,13 +128,17 @@ export function fleetNotice(state: { bootError: string; error: string; loaded: n
 
 /**
  * The absolute time of the last report, for the Agent cell's title and the
- * panel. A view time is left off only when it is the zero time, so an absent
- * last_seen and the zero time an older server sends both say never.
+ * panel, or "never" for an agent that never reported.
  */
-export function lastSeenLabel(value: string | undefined, locale?: string): string {
-  if (!value) return "never";
+export function lastSeenLabel(node: WireGuardNode, locale?: string): string {
+  const value = node.last_seen;
+  // A server that sends status leaves last_seen off only when it is the zero
+  // time. A row with neither says nothing about when, and its state reads
+  // offline, so it is not called never here either.
+  if (!value) return node.status ? "never" : "not reported";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "not reported";
+  // The zero time a server up to alpha-0.2.2a138 sends for a node that never reported.
   if (date.getUTCFullYear() < 2000) return "never";
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }

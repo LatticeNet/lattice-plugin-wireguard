@@ -74,6 +74,13 @@ describe("the Fleet table, rendered", () => {
     expect(html).toContain("1 node · 0 agents online");
   });
 
+  it("says the same for the zero time a server up to a138 sends, with no status", async () => {
+    const fresh = [node({ node_id: "node_cd-fresh", name: "[cd]-fresh", online: false, last_seen: "0001-01-01T00:00:00Z" })];
+    const html = await render(FleetTable, props(fresh));
+    expect(html).toContain('title="never reported, last seen never"');
+    expect(html).toMatch(/data-tone="neutral"[^>]*>never reported<\/span><span class="wg-agent-age">never seen<\/span>/);
+  });
+
   it("marks the column the rows follow, and none while a query sorts by a field with no column", async () => {
     expect(await render(FleetTable, { ...props(rich), sortKey: "node", sortDirection: "desc" })).toMatch(/aria-sort="descending"[^>]*>[\s\S]*?Node/);
     expect(await render(FleetTable, { ...props(rich), sortKey: undefined })).not.toContain("aria-sort=");

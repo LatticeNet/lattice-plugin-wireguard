@@ -152,11 +152,17 @@ describe("the agent state word", () => {
 });
 
 describe("the last-seen label", () => {
-  it("says never for an absent time and for the zero time, and prints a real one", () => {
-    expect(lastSeenLabel(undefined)).toBe("never");
-    expect(lastSeenLabel("")).toBe("never");
-    expect(lastSeenLabel("0001-01-01T00:00:00Z")).toBe("never");
-    expect(lastSeenLabel("not a time")).toBe("not reported");
-    expect(lastSeenLabel("2026-10-08T11:58:00Z", "en-US")).toMatch(/Oct 8, 2026/);
+  it("says never where the server left the time off or sent the zero time, and prints a real one", () => {
+    expect(lastSeenLabel(node({ status: "never_reported", online: false }))).toBe("never");
+    // Disabled outranks never reported, and the server still leaves the zero time off.
+    expect(lastSeenLabel(node({ status: "disabled", online: false, disabled: true }))).toBe("never");
+    expect(lastSeenLabel(node({ online: false, last_seen: "0001-01-01T00:00:00Z" }))).toBe("never");
+    expect(lastSeenLabel(node({ online: false, disabled: true, last_seen: "0001-01-01T00:00:00Z" }))).toBe("never");
+    // No status and no time: the state reads offline, so the label does not claim never.
+    expect(lastSeenLabel(node({ online: false }))).toBe("not reported");
+    expect(lastSeenLabel(node({ last_seen: "not a time" }))).toBe("not reported");
+    const printed = lastSeenLabel(node({ status: "online", last_seen: "2026-10-08T11:58:00Z" }), "en-US");
+    expect(printed).toMatch(/2026/);
+    expect(printed).not.toMatch(/never|not reported/);
   });
 });

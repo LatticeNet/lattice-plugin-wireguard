@@ -128,7 +128,7 @@ function openRow(event: MouseEvent, nodeId: string): void {
         <PcTd v-if="columns.endpoint" label="Endpoint" mono :title="node.endpoint || 'No public endpoint reported, so peers cannot dial in to this node'">
           <span :class="node.endpoint ? undefined : 'wg-absent'">{{ node.endpoint || 'dial-out only' }}</span>
         </PcTd>
-        <PcTd label="Agent" stack="state" class="wg-agent-cell" :title="`${agentState(node)}, last seen ${lastSeenLabel(node.last_seen)}`">
+        <PcTd label="Agent" stack="state" class="wg-agent-cell" :title="`${agentState(node)}, last seen ${lastSeenLabel(node)}`">
           <span class="wg-agent">
             <PcStateDot :tone="agentTone(node)" :label="agentState(node)" />
             <span class="wg-agent-age">{{ agentAge(node, now) }}</span>
