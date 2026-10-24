@@ -149,5 +149,5 @@ client passes `pageState` and sends the page state back, its chassis carries the
 layer row, the non-modal side panel and the table fixes this page used to patch.
 `npm ci` needs a `GITHUB_TOKEN` that can read the LatticeNet packages.
 
-Build and sign with Go `1.26.9`, Node `22`, the deterministic plugin packer, and
+Build and sign with Go `1.26.10`, Node `22`, the deterministic plugin packer, and
 the trusted LatticeNet Ed25519 publisher seed. Never commit the seed.
