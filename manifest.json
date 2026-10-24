@@ -9,12 +9,12 @@
     "network:apply",
     "task:run"
   ],
-  "version": "0.2.0-alpha.7",
+  "version": "0.2.0-alpha.8",
   "publisher": "latticenet",
   "signature_ed25519": "hE/Y9u0/sq2LbV4qs6TRuN88RR6ajr9tEhVCbmE1ib/3dJs82Ix70iiESRIEq1nd+6POe2nchf69nexVL3puAQ==",
   "bundle": {
     "format": "tar+gzip",
-    "digest_sha256": "e7fa2eb1f1a3d1ec4d81b6ca2f3360cc1ad5dbca577b3da45621e50ea4b934f9"
+    "digest_sha256": "7c9f4304762060d77c8991027d1ed2a154735c72b8a467869175d6e3ea8dbece"
   },
   "runtime": {
     "protocol": "stdio-json-v1",
@@ -38,7 +38,7 @@
       {
         "section": "extensions",
         "section_title": "Extensions",
-        "title": "WireGuard",
+        "title": "WireGuard mesh",
         "route": "networks",
         "icon": "Spline",
         "scopes": [
@@ -49,7 +49,7 @@
     "views": [
       {
         "route": "networks",
-        "title": "WireGuard Networks",
+        "title": "WireGuard mesh",
         "kind": "sandbox"
       }
     ]

@@ -373,9 +373,9 @@ onBeforeUnmount(() => {
 <template>
   <PcWorkspace>
     <PcPageHeader
-      title="WireGuard Networks"
+      title="WireGuard mesh"
       badge="WireGuard plugin"
-      description="Which nodes can join the mesh and what each lacks. A configuration plan reaches a node only after you approve it."
+      description="There is one mesh: every node with a public key and a WireGuard address is a member, and this page shows which nodes are ready and what each lacks. A configuration plan reaches a node only after you approve it."
     >
       <template #icon><Spline :size="19" aria-hidden="true" /></template>
       <template #actions>
