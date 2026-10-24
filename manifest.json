@@ -38,7 +38,7 @@
       {
         "section": "extensions",
         "section_title": "Extensions",
-        "title": "WireGuard",
+        "title": "WireGuard mesh",
         "route": "networks",
         "icon": "Spline",
         "scopes": [
@@ -49,7 +49,7 @@
     "views": [
       {
         "route": "networks",
-        "title": "WireGuard Networks",
+        "title": "WireGuard mesh",
         "kind": "sandbox"
       }
     ]
