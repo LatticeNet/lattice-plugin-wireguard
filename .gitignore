@@ -19,3 +19,6 @@ seed.*
 # artifact, never part of the signed bundle (which carries bin/<os>-<arch>/plugin
 # built in CI), so tracking it only produced a 3 MB diff whenever anyone built.
 /system-go/system-go
+
+# Local release and build outputs; releases carry the bundle, not the tree.
+/.release-bundle.tar.gz
